@@ -1,53 +1,32 @@
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Plus, ShoppingCart } from 'lucide-react'
+import { Suspense } from 'react'
+import DomainsContent from './domains-content'
 
-export default function DomainsPage() {
+function DomainsLoading() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Domains</h1>
-          <p className="text-muted-foreground">
-            Manage your sending domains and DNS configuration
-          </p>
+          <div className="h-8 w-32 bg-muted animate-pulse rounded" />
+          <div className="h-4 w-48 bg-muted animate-pulse rounded mt-2" />
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline">
-            <ShoppingCart className="mr-2 h-4 w-4" />
-            Buy Domain
-          </Button>
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Domain
-          </Button>
-        </div>
+        <div className="h-10 w-28 bg-muted animate-pulse rounded" />
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>No domains yet</CardTitle>
-          <CardDescription>
-            Add a domain to configure SPF, DKIM, DMARC, and BIMI records
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            You can purchase domains directly through Cloudflare, Namecheap, or Porkbun,
-            or add an existing domain you already own.
-          </p>
-          <div className="flex gap-2">
-            <Button variant="outline">
-              <ShoppingCart className="mr-2 h-4 w-4" />
-              Buy Domain
-            </Button>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Existing
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {[1, 2, 3].map((i) => (
+          <div
+            key={i}
+            className="h-40 rounded-lg border bg-card animate-pulse"
+          />
+        ))}
+      </div>
     </div>
+  )
+}
+
+export default function DomainsPage() {
+  return (
+    <Suspense fallback={<DomainsLoading />}>
+      <DomainsContent />
+    </Suspense>
   )
 }
