@@ -20,10 +20,14 @@ If everything else fails, the email sending engine with smart deliverability mus
 
 #### Infrastructure Automation (Mailscale-style)
 - [ ] Auto domain purchase via Namecheap API
-- [ ] Auto DNS setup (SPF/DKIM/DMARC configuration)
+- [ ] Auto domain purchase via Cloudflare Registrar API (at-cost pricing)
+- [ ] Auto domain purchase via Porkbun API (budget option)
+- [ ] Auto DNS setup via Cloudflare DNS API (SPF/DKIM/DMARC/BIMI)
+- [ ] Auto DNS setup via Namecheap DNS API (fallback)
 - [ ] Auto mailbox creation (Google Workspace Admin SDK)
 - [ ] Auto mailbox creation (Microsoft 365 Graph API)
 - [ ] Custom SMTP server setup support
+- [ ] Domain health monitoring (DNS propagation, record validation)
 
 #### Email Account Management
 - [ ] Connect Google Workspace accounts (OAuth)
@@ -118,7 +122,11 @@ If everything else fails, the email sending engine with smart deliverability mus
 
 ### Technical Decisions Made
 - **Email Providers**: All three (Google OAuth, Microsoft OAuth, generic SMTP)
-- **Domain Registrar**: Namecheap API (first integration)
+- **Domain Registrars**: Multi-provider support
+  - Cloudflare Registrar (at-cost domains, best DNS)
+  - Namecheap (competitive pricing, good API)
+  - Porkbun (budget option, developer-friendly)
+- **DNS Management**: Cloudflare DNS primary (fast propagation, API-first)
 - **Warmup Strategy**: Hybrid (self-warmup + provider integration)
 - **Reply Handling**: Full unified inbox (not just detection)
 - **Billing Model**: Tiered plans (not usage-based)
@@ -141,7 +149,8 @@ Previous planning session produced:
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Namecheap for domains | Good API, competitive pricing, familiar | — Pending |
+| Multi-registrar (Cloudflare/Namecheap/Porkbun) | User choice, price flexibility, redundancy | — Pending |
+| Cloudflare DNS primary | Fastest propagation, best API, free tier | — Pending |
 | Google + Microsoft + SMTP | Maximum compatibility for users | — Pending |
 | Hybrid warmup | Balance between control and reliability | — Pending |
 | Tiered billing | Simpler than usage-based, predictable revenue | — Pending |
@@ -156,10 +165,13 @@ Backend:      FastAPI (Python) or Next.js API routes
 Database:     PostgreSQL (Supabase with RLS)
 Queue:        Redis + BullMQ (scheduled sends)
 Email:        Nodemailer (SMTP) + IMAP libraries
-DNS:          Cloudflare API for DNS management
+DNS:          Cloudflare API (primary), Namecheap API (fallback)
+Domains:      Cloudflare Registrar, Namecheap, Porkbun APIs
+Mailbox:      Google Workspace Admin SDK, Microsoft Graph API
 Auth:         Supabase Auth or NextAuth
 Billing:      Stripe
 AI:           Claude API for spam analysis
+Validation:   ZeroBounce or NeverBounce API
 ```
 
 ---
