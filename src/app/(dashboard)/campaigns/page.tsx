@@ -1,37 +1,29 @@
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Plus } from 'lucide-react'
+import { Suspense } from 'react'
+import { CampaignsContent } from './campaigns-content'
 
 export default function CampaignsPage() {
+  return (
+    <Suspense fallback={<CampaignsLoading />}>
+      <CampaignsContent />
+    </Suspense>
+  )
+}
+
+function CampaignsLoading() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Campaigns</h1>
-          <p className="text-muted-foreground">
-            Create and manage your email campaigns
-          </p>
+          <div className="h-8 w-48 bg-muted animate-pulse rounded" />
+          <div className="h-4 w-64 bg-muted animate-pulse rounded mt-2" />
         </div>
-        <Button>
-          <Plus className="mr-2 h-4 w-4" />
-          New Campaign
-        </Button>
+        <div className="h-10 w-32 bg-muted animate-pulse rounded" />
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>No campaigns yet</CardTitle>
-          <CardDescription>
-            Create your first campaign to start sending emails
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            Create Campaign
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="grid gap-4">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="h-24 bg-muted animate-pulse rounded-lg" />
+        ))}
+      </div>
     </div>
   )
 }

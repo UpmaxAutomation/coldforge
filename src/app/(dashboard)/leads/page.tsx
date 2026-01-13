@@ -1,43 +1,32 @@
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Plus, Upload } from 'lucide-react'
+import { Suspense } from 'react'
+import { LeadsContent } from './leads-content'
 
 export default function LeadsPage() {
+  return (
+    <Suspense fallback={<LeadsLoading />}>
+      <LeadsContent />
+    </Suspense>
+  )
+}
+
+function LeadsLoading() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Leads</h1>
-          <p className="text-muted-foreground">
-            Manage your prospects and lead lists
-          </p>
+          <div className="h-8 w-32 bg-muted animate-pulse rounded" />
+          <div className="h-4 w-48 bg-muted animate-pulse rounded mt-2" />
         </div>
         <div className="flex gap-2">
-          <Button variant="outline">
-            <Upload className="mr-2 h-4 w-4" />
-            Import CSV
-          </Button>
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Lead
-          </Button>
+          <div className="h-10 w-28 bg-muted animate-pulse rounded" />
+          <div className="h-10 w-24 bg-muted animate-pulse rounded" />
         </div>
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>No leads yet</CardTitle>
-          <CardDescription>
-            Import leads from a CSV file or add them manually
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button variant="outline">
-            <Upload className="mr-2 h-4 w-4" />
-            Import CSV
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="grid gap-4">
+        {[1, 2, 3, 4, 5].map((i) => (
+          <div key={i} className="h-16 bg-muted animate-pulse rounded-lg" />
+        ))}
+      </div>
     </div>
   )
 }

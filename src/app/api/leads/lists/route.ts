@@ -1,19 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
-interface LeadListRecord {
-  id: string
-  organization_id: string
-  name: string
-  description: string | null
-  lead_count: number
-  color: string | null
-  created_at: string
-  updated_at: string
-}
-
 // GET /api/leads/lists - Get all lead lists
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -23,25 +12,22 @@ export async function GET(request: NextRequest) {
     }
 
     // Get user's organization
-    const { data: profile } = await supabase
-      .from('profiles')
+    const { data: userData } = await supabase
+      .from('users')
       .select('organization_id')
       .eq('id', user.id)
       .single() as { data: { organization_id: string } | null }
 
-    if (!profile) {
-      return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
+    if (!userData?.organization_id) {
+      return NextResponse.json({ error: 'No organization found' }, { status: 400 })
     }
 
     // Get all lists
-    const { data: lists, error } = await supabase
-      .from('lead_lists')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: lists, error } = await (supabase.from('lead_lists') as any)
       .select('*')
-      .eq('organization_id', profile.organization_id)
-      .order('created_at', { ascending: false }) as {
-        data: LeadListRecord[] | null
-        error: Error | null
-      }
+      .eq('organization_id', userData.organization_id)
+      .order('created_at', { ascending: false })
 
     if (error) {
       console.error('Error fetching lead lists:', error)
@@ -49,12 +35,11 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({
-      lists: lists?.map(list => ({
+      lists: lists?.map((list: { id: string; name: string; description: string | null; lead_count: number; created_at: string; updated_at: string }) => ({
         id: list.id,
         name: list.name,
         description: list.description,
         leadCount: list.lead_count,
-        color: list.color,
         createdAt: list.created_at,
         updatedAt: list.updated_at,
       })) || [],
@@ -79,31 +64,30 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { name, description, color } = body
+    const { name, description } = body
 
     if (!name) {
       return NextResponse.json({ error: 'Name is required' }, { status: 400 })
     }
 
     // Get user's organization
-    const { data: profile } = await supabase
-      .from('profiles')
+    const { data: userData } = await supabase
+      .from('users')
       .select('organization_id')
       .eq('id', user.id)
       .single() as { data: { organization_id: string } | null }
 
-    if (!profile) {
-      return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
+    if (!userData?.organization_id) {
+      return NextResponse.json({ error: 'No organization found' }, { status: 400 })
     }
 
     // Create list
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: list, error: createError } = await (supabase.from('lead_lists') as any)
       .insert({
-        organization_id: profile.organization_id,
+        organization_id: userData.organization_id,
         name,
         description,
-        color,
         lead_count: 0,
       })
       .select()
@@ -120,7 +104,6 @@ export async function POST(request: NextRequest) {
         name: list.name,
         description: list.description,
         leadCount: list.lead_count,
-        color: list.color,
         createdAt: list.created_at,
         updatedAt: list.updated_at,
       },

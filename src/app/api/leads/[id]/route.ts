@@ -1,28 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import type { LeadStatus } from '@/lib/leads'
-
-interface LeadRecord {
-  id: string
-  organization_id: string
-  email: string
-  first_name: string | null
-  last_name: string | null
-  company: string | null
-  title: string | null
-  phone: string | null
-  linkedin_url: string | null
-  website: string | null
-  custom_fields: Record<string, string>
-  tags: string[]
-  list_ids: string[]
-  status: LeadStatus
-  source: string
-  source_details: string | null
-  last_contacted_at: string | null
-  created_at: string
-  updated_at: string
-}
 
 // GET /api/leads/[id] - Get single lead
 export async function GET(
@@ -40,23 +17,23 @@ export async function GET(
     const { id } = await params
 
     // Get user's organization
-    const { data: profile } = await supabase
-      .from('profiles')
+    const { data: userData } = await supabase
+      .from('users')
       .select('organization_id')
       .eq('id', user.id)
       .single() as { data: { organization_id: string } | null }
 
-    if (!profile) {
-      return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
+    if (!userData?.organization_id) {
+      return NextResponse.json({ error: 'No organization found' }, { status: 400 })
     }
 
     // Get lead
-    const { data: lead, error } = await supabase
-      .from('leads')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: lead, error } = await (supabase.from('leads') as any)
       .select('*')
       .eq('id', id)
-      .eq('organization_id', profile.organization_id)
-      .single() as { data: LeadRecord | null; error: Error | null }
+      .eq('organization_id', userData.organization_id)
+      .single()
 
     if (error || !lead) {
       return NextResponse.json({ error: 'Lead not found' }, { status: 404 })
@@ -72,14 +49,10 @@ export async function GET(
         title: lead.title,
         phone: lead.phone,
         linkedinUrl: lead.linkedin_url,
-        website: lead.website,
         customFields: lead.custom_fields,
-        tags: lead.tags,
-        listIds: lead.list_ids,
+        listId: lead.list_id,
         status: lead.status,
-        source: lead.source,
-        sourceDetails: lead.source_details,
-        lastContactedAt: lead.last_contacted_at,
+        validationStatus: lead.validation_status,
         createdAt: lead.created_at,
         updatedAt: lead.updated_at,
       },
@@ -93,8 +66,8 @@ export async function GET(
   }
 }
 
-// PUT /api/leads/[id] - Update lead
-export async function PUT(
+// PATCH /api/leads/[id] - Update lead
+export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -110,22 +83,22 @@ export async function PUT(
     const body = await request.json()
 
     // Get user's organization
-    const { data: profile } = await supabase
-      .from('profiles')
+    const { data: userData } = await supabase
+      .from('users')
       .select('organization_id')
       .eq('id', user.id)
       .single() as { data: { organization_id: string } | null }
 
-    if (!profile) {
-      return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
+    if (!userData?.organization_id) {
+      return NextResponse.json({ error: 'No organization found' }, { status: 400 })
     }
 
     // Verify lead belongs to organization
-    const { data: existing } = await supabase
-      .from('leads')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: existing } = await (supabase.from('leads') as any)
       .select('id')
       .eq('id', id)
-      .eq('organization_id', profile.organization_id)
+      .eq('organization_id', userData.organization_id)
       .single()
 
     if (!existing) {
@@ -143,10 +116,8 @@ export async function PUT(
     if (body.title !== undefined) updates.title = body.title
     if (body.phone !== undefined) updates.phone = body.phone
     if (body.linkedinUrl !== undefined) updates.linkedin_url = body.linkedinUrl
-    if (body.website !== undefined) updates.website = body.website
     if (body.customFields !== undefined) updates.custom_fields = body.customFields
-    if (body.tags !== undefined) updates.tags = body.tags
-    if (body.listIds !== undefined) updates.list_ids = body.listIds
+    if (body.listId !== undefined) updates.list_id = body.listId
     if (body.status !== undefined) updates.status = body.status
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -161,9 +132,26 @@ export async function PUT(
       return NextResponse.json({ error: 'Failed to update lead' }, { status: 500 })
     }
 
-    return NextResponse.json({ lead })
+    return NextResponse.json({
+      lead: {
+        id: lead.id,
+        email: lead.email,
+        firstName: lead.first_name,
+        lastName: lead.last_name,
+        company: lead.company,
+        title: lead.title,
+        phone: lead.phone,
+        linkedinUrl: lead.linkedin_url,
+        customFields: lead.custom_fields,
+        listId: lead.list_id,
+        status: lead.status,
+        validationStatus: lead.validation_status,
+        createdAt: lead.created_at,
+        updatedAt: lead.updated_at,
+      },
+    })
   } catch (error) {
-    console.error('Lead PUT error:', error)
+    console.error('Lead PATCH error:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -187,14 +175,26 @@ export async function DELETE(
     const { id } = await params
 
     // Get user's organization
-    const { data: profile } = await supabase
-      .from('profiles')
+    const { data: userData } = await supabase
+      .from('users')
       .select('organization_id')
       .eq('id', user.id)
       .single() as { data: { organization_id: string } | null }
 
-    if (!profile) {
-      return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
+    if (!userData?.organization_id) {
+      return NextResponse.json({ error: 'No organization found' }, { status: 400 })
+    }
+
+    // Verify lead exists and belongs to organization
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: existing } = await (supabase.from('leads') as any)
+      .select('id')
+      .eq('id', id)
+      .eq('organization_id', userData.organization_id)
+      .single()
+
+    if (!existing) {
+      return NextResponse.json({ error: 'Lead not found' }, { status: 404 })
     }
 
     // Delete lead
@@ -202,7 +202,7 @@ export async function DELETE(
     const { error: deleteError } = await (supabase.from('leads') as any)
       .delete()
       .eq('id', id)
-      .eq('organization_id', profile.organization_id)
+      .eq('organization_id', userData.organization_id)
 
     if (deleteError) {
       console.error('Error deleting lead:', deleteError)
