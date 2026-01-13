@@ -15,7 +15,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
-import { Globe, CheckCircle, XCircle, AlertTriangle, RefreshCw, Trash2, ExternalLink } from 'lucide-react'
+import { Globe, CheckCircle, XCircle, AlertTriangle, RefreshCw, Trash2, ExternalLink, Settings } from 'lucide-react'
+import { DnsConfigModal } from './dns-config-modal'
 
 interface Domain {
   id: string
@@ -41,6 +42,7 @@ interface DomainCardProps {
 export function DomainCard({ domain, onRefresh, onDelete }: DomainCardProps) {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [showDnsConfig, setShowDnsConfig] = useState(false)
 
   const handleRefresh = async () => {
     setIsRefreshing(true)
@@ -135,6 +137,14 @@ export function DomainCard({ domain, onRefresh, onDelete }: DomainCardProps) {
             <Button
               variant="ghost"
               size="icon"
+              onClick={() => setShowDnsConfig(true)}
+              title="Configure DNS"
+            >
+              <Settings className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={handleRefresh}
               disabled={isRefreshing}
             >
@@ -177,6 +187,16 @@ export function DomainCard({ domain, onRefresh, onDelete }: DomainCardProps) {
             </p>
           )}
         </div>
+
+        <DnsConfigModal
+          open={showDnsConfig}
+          onClose={() => setShowDnsConfig(false)}
+          domain={domain}
+          onSuccess={() => {
+            setShowDnsConfig(false)
+            handleRefresh()
+          }}
+        />
       </CardContent>
     </Card>
   )
