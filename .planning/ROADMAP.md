@@ -1,12 +1,14 @@
-# Roadmap: InstantScale
+# Roadmap: InstantScale Production Readiness
 
 ## Overview
 
-Build a production-ready cold email outreach platform combining Instantly.ai campaign management with Mailscale.ai infrastructure automation. Starting from foundation through to multi-tenant SaaS with Stripe billing. The journey: setup → infrastructure automation → sending engine → deliverability → monetization.
+Transform InstantScale from 6.2/10 MVP to 10/10 production-ready platform. Focus: testing, type safety, security, performance, monitoring, and feature completion. The journey: quality foundation → hardening → completeness → polish.
 
 ## Domain Expertise
 
-None (general web application patterns)
+- ~/.claude/skills/expertise/api-development
+- ~/.claude/skills/expertise/security-review
+- ~/.claude/skills/expertise/devops
 
 ## Phases
 
@@ -14,169 +16,158 @@ None (general web application patterns)
 - Integer phases (1, 2, 3): Planned milestone work
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
-- [x] **Phase 1: Foundation** - Project setup, database schema, auth, UI shell ✅
-- [x] **Phase 2: Email Accounts** - SMTP/IMAP connections, OAuth, credential encryption ✅
-- [ ] **Phase 3: Domain Automation** - Registrar APIs for auto domain purchase
-- [ ] **Phase 4: DNS Automation** - Auto SPF/DKIM/DMARC/BIMI configuration
-- [ ] **Phase 5: Mailbox Provisioning** - Google Workspace & Microsoft 365 automation
-- [ ] **Phase 6: Warmup System** - Email warmup logic and engagement simulation
-- [ ] **Phase 7: Lead Management** - CSV import/export, validation, list management
-- [ ] **Phase 8: Campaign Engine** - Sequences, conditions, scheduling, variables
-- [ ] **Phase 9: Sending Engine** - SMTP sending, inbox rotation, job queue
-- [ ] **Phase 10: Deliverability** - AI spam analysis, content variation, throttling
-- [ ] **Phase 11: Reply Management** - IMAP polling, unified inbox, auto-stop
-- [ ] **Phase 12: SaaS & Billing** - Stripe subscriptions, tenant isolation, usage limits
+- [ ] **Phase 1: Testing Infrastructure** - Vitest setup, test utilities, unit tests for critical modules
+- [ ] **Phase 2: Type Safety** - Remove @ts-nocheck, add Zod validation, fix all type errors
+- [ ] **Phase 3: Security Hardening** - Rate limiting, input validation, CSRF protection
+- [ ] **Phase 4: Database Optimization** - Indexes, query optimization, connection pooling
+- [ ] **Phase 5: Error Handling** - Error class hierarchy, retry logic, circuit breakers
+- [ ] **Phase 6: Monitoring & Logging** - Pino logging, health checks, metrics
+- [ ] **Phase 7: Feature Completion - Warmup** - Complete warmup engine implementation
+- [ ] **Phase 8: Feature Completion - Sending** - Job queue, scheduled sends, inbox rotation
+- [ ] **Phase 9: Feature Completion - Deliverability** - Spam analysis, bounce handling
+- [ ] **Phase 10: Feature Completion - Domains** - Auto-purchase workflow, DNS automation
+- [ ] **Phase 11: Documentation** - API docs, user guides, architecture docs
+- [ ] **Phase 12: UI/UX Polish** - Loading states, error handling, onboarding flow
 
 ## Phase Details
 
-### Phase 1: Foundation
-**Goal**: Working Next.js app with database, auth, and dashboard shell on localhost
+### Phase 1: Testing Infrastructure
+**Goal**: Vitest setup with mocks, utilities, and 50+ unit tests for critical modules
 **Depends on**: Nothing (first phase)
-**Research**: Likely (Supabase setup, Next.js 14 patterns)
-**Research topics**: Supabase RLS patterns, Next.js app router, shadcn/ui setup
+**Research**: Unlikely (established testing patterns)
 **Plans**: 3 plans
 
 Plans:
-- [x] 01-01: Next.js project setup with TypeScript, Tailwind, shadcn/ui ✅
-- [x] 01-02: Supabase database schema and RLS policies ✅
-- [x] 01-03: Authentication flow and dashboard layout ✅
+- [ ] 01-01: Vitest configuration and test utilities setup
+- [ ] 01-02: Supabase mocks and test data factories
+- [ ] 01-03: Unit tests for lib/ modules (encryption, validation, sending)
 
-### Phase 2: Email Accounts
-**Goal**: Users can connect and manage multiple email accounts (Google/Microsoft/SMTP)
+### Phase 2: Type Safety
+**Goal**: 100% type-safe codebase with runtime validation
 **Depends on**: Phase 1
-**Research**: Likely (OAuth flows, credential encryption)
-**Research topics**: Google OAuth for Gmail, Microsoft OAuth, AES-256 encryption in Node
-**Plans**: 4 plans
+**Research**: Unlikely (standard TypeScript/Zod patterns)
+**Plans**: 3 plans
 
 Plans:
-- [x] 02-01: Email accounts database schema and CRUD API ✅
-- [x] 02-02: Google Workspace OAuth connection flow ✅
-- [x] 02-03: Microsoft 365 OAuth connection flow ✅
-- [x] 02-04: Generic SMTP/IMAP connection with credential encryption ✅
+- [ ] 02-01: Remove all @ts-nocheck and fix Supabase type inference
+- [ ] 02-02: Add Zod schemas for all API request/response types
+- [ ] 02-03: Enable strict TypeScript mode and fix remaining errors
 
-### Phase 3: Domain Automation
-**Goal**: Auto-purchase domains via Cloudflare, Namecheap, Porkbun APIs
+### Phase 3: Security Hardening
+**Goal**: Enterprise-grade security with rate limiting, validation, and audit logging
 **Depends on**: Phase 2
-**Research**: Likely (registrar APIs)
-**Research topics**: Cloudflare Registrar API, Namecheap API, Porkbun API, domain availability checking
+**Research**: Likely (Upstash rate limiting, security patterns)
+**Research topics**: Upstash rate limiting patterns, CSRF in Next.js, security headers
 **Plans**: 4 plans
 
 Plans:
-- [ ] 03-01: Domain management database schema and UI
-- [ ] 03-02: Cloudflare Registrar integration (at-cost domains)
-- [ ] 03-03: Namecheap API integration
-- [ ] 03-04: Porkbun API integration
+- [ ] 03-01: Rate limiting on all API routes with Upstash
+- [ ] 03-02: Input validation with Zod on all endpoints
+- [ ] 03-03: Security headers and CSRF protection
+- [ ] 03-04: Audit logging for sensitive operations
 
-### Phase 4: DNS Automation
-**Goal**: Auto-configure SPF/DKIM/DMARC/BIMI records via Cloudflare DNS
+### Phase 4: Database Optimization
+**Goal**: Optimized queries with proper indexing and no N+1 issues
+**Depends on**: Phase 2
+**Research**: Unlikely (standard PostgreSQL patterns)
+**Plans**: 3 plans
+
+Plans:
+- [ ] 04-01: Add performance indexes for common queries
+- [ ] 04-02: Fix N+1 queries with proper joins/aggregations
+- [ ] 04-03: Query result caching for dashboard stats
+
+### Phase 5: Error Handling
+**Goal**: Comprehensive error handling with retry logic and graceful degradation
 **Depends on**: Phase 3
-**Research**: Likely (DNS record formats, email authentication)
-**Research topics**: Cloudflare DNS API, SPF/DKIM/DMARC syntax, BIMI requirements
+**Research**: Unlikely (established patterns)
 **Plans**: 3 plans
 
 Plans:
-- [ ] 04-01: DNS configuration database schema and health monitoring
-- [ ] 04-02: Cloudflare DNS API integration for record management
-- [ ] 04-03: Auto-generate and validate SPF/DKIM/DMARC/BIMI records
+- [ ] 05-01: Error class hierarchy (AppError, ValidationError, etc.)
+- [ ] 05-02: Retry logic for transient failures (SMTP, external APIs)
+- [ ] 05-03: Circuit breaker pattern for external services
 
-### Phase 5: Mailbox Provisioning
-**Goal**: Auto-create mailboxes in Google Workspace and Microsoft 365
-**Depends on**: Phase 4
-**Research**: Likely (admin APIs)
-**Research topics**: Google Workspace Admin SDK, Microsoft Graph API for user provisioning
+### Phase 6: Monitoring & Logging
+**Goal**: Full observability with structured logging, metrics, and health checks
+**Depends on**: Phase 5
+**Research**: Likely (Pino, Prometheus patterns)
+**Research topics**: Pino configuration, Prometheus metrics in Next.js, health check patterns
 **Plans**: 3 plans
 
 Plans:
-- [ ] 05-01: Mailbox provisioning database schema and workflow
-- [ ] 05-02: Google Workspace Admin SDK integration
-- [ ] 05-03: Microsoft 365 Graph API integration
+- [ ] 06-01: Structured logging with Pino across all routes
+- [ ] 06-02: Health check endpoint with dependency checks
+- [ ] 06-03: Metrics collection for key operations
 
-### Phase 6: Warmup System
-**Goal**: Gradual email warmup with engagement simulation
-**Depends on**: Phase 2
-**Research**: Likely (warmup strategies, provider APIs)
-**Research topics**: Email warmup algorithms, warmup provider APIs (Instantly Warmup, Warmup Inbox)
-**Plans**: 3 plans
-
-Plans:
-- [ ] 06-01: Warmup configuration and progress tracking
-- [ ] 06-02: Self-warmup engine (send between owned accounts)
-- [ ] 06-03: Warmup provider API integration
-
-### Phase 7: Lead Management
-**Goal**: Import, validate, organize, and export leads
-**Depends on**: Phase 1
-**Research**: Likely (email validation APIs)
-**Research topics**: ZeroBounce API, NeverBounce API, CSV parsing best practices
-**Plans**: 3 plans
+### Phase 7: Feature Completion - Warmup
+**Goal**: Complete email warmup system with self-warmup engine
+**Depends on**: Phase 6
+**Research**: Likely (warmup algorithms)
+**Research topics**: Email warmup strategies, gradual volume increase patterns
+**Plans**: 2 plans
 
 Plans:
-- [ ] 07-01: Lead lists and leads database schema with UI
-- [ ] 07-02: CSV import/export with validation
-- [ ] 07-03: Email validation API integration (ZeroBounce/NeverBounce)
+- [ ] 07-01: Self-warmup engine (send between owned accounts)
+- [ ] 07-02: Warmup progress tracking and reputation monitoring
 
-### Phase 8: Campaign Engine
-**Goal**: Multi-step email sequences with conditions and scheduling
+### Phase 8: Feature Completion - Sending
+**Goal**: Production-ready sending engine with job queue and scheduling
 **Depends on**: Phase 7
-**Research**: Unlikely (standard application patterns)
-**Plans**: 4 plans
-
-Plans:
-- [ ] 08-01: Campaign and sequence database schema
-- [ ] 08-02: Campaign builder UI with sequence editor
-- [ ] 08-03: Conditional logic engine (if not opened, if not replied, etc.)
-- [ ] 08-04: Variable substitution and template system
-
-### Phase 9: Sending Engine
-**Goal**: Reliable email sending with inbox rotation and smart scheduling
-**Depends on**: Phase 8, Phase 2
-**Research**: Likely (job queue patterns, SMTP libraries)
-**Research topics**: BullMQ patterns, Nodemailer advanced usage, inbox rotation algorithms
-**Plans**: 4 plans
-
-Plans:
-- [ ] 09-01: Redis + BullMQ job queue setup
-- [ ] 09-02: SMTP sending service with Nodemailer
-- [ ] 09-03: Inbox rotation and daily limit enforcement
-- [ ] 09-04: Smart scheduling (timezone-aware, business hours, random delays)
-
-### Phase 10: Deliverability
-**Goal**: AI spam analysis, content variation, ISP-specific optimization
-**Depends on**: Phase 9
-**Research**: Likely (Claude API, spam filter patterns)
-**Research topics**: Claude API for content analysis, Gmail/Yahoo/Outlook spam patterns, content spinning
-**Plans**: 4 plans
-
-Plans:
-- [ ] 10-01: AI spam score prediction using Claude API
-- [ ] 10-02: Content variation generation (anti-pattern detection)
-- [ ] 10-03: ISP-specific sending strategies
-- [ ] 10-04: Engagement-based throttling and reputation tracking
-
-### Phase 11: Reply Management
-**Goal**: Unified inbox for replies with auto-sequence stop
-**Depends on**: Phase 9
-**Research**: Likely (IMAP libraries, parsing)
-**Research topics**: IMAP libraries for Node.js, email parsing, reply detection algorithms
+**Research**: Likely (BullMQ patterns)
+**Research topics**: BullMQ job scheduling, Redis queue patterns
 **Plans**: 3 plans
 
 Plans:
-- [ ] 11-01: IMAP polling service for reply detection
-- [ ] 11-02: Unified inbox UI with reply management
-- [ ] 11-03: Auto-stop sequences on reply, reply categorization
+- [ ] 08-01: Redis + BullMQ job queue setup
+- [ ] 08-02: Scheduled email sending with timezone support
+- [ ] 08-03: Inbox rotation with daily limit enforcement
 
-### Phase 12: SaaS & Billing
-**Goal**: Multi-tenant with Stripe subscriptions and usage limits
-**Depends on**: All previous phases
-**Research**: Likely (Stripe API)
-**Research topics**: Stripe Subscriptions API, tiered pricing, usage metering, webhook handling
-**Plans**: 4 plans
+### Phase 9: Feature Completion - Deliverability
+**Goal**: Spam analysis, bounce handling, and deliverability monitoring
+**Depends on**: Phase 8
+**Research**: Likely (Claude API for spam analysis)
+**Research topics**: Claude API for content analysis, bounce classification
+**Plans**: 3 plans
 
 Plans:
-- [ ] 12-01: Subscription plans and pricing configuration
-- [ ] 12-02: Stripe integration (checkout, webhooks, portal)
-- [ ] 12-03: Usage metering and limit enforcement
-- [ ] 12-04: Tenant isolation and admin dashboard
+- [ ] 09-01: AI spam score prediction with Claude API
+- [ ] 09-02: Bounce classification and automatic list cleaning
+- [ ] 09-03: Deliverability dashboard with health scores
+
+### Phase 10: Feature Completion - Domains
+**Goal**: Complete domain auto-purchase and DNS automation workflow
+**Depends on**: Phase 6
+**Research**: Likely (registrar APIs)
+**Research topics**: Cloudflare Registrar API, Namecheap API
+**Plans**: 3 plans
+
+Plans:
+- [ ] 10-01: Cloudflare domain purchase workflow
+- [ ] 10-02: Auto DNS configuration (SPF/DKIM/DMARC)
+- [ ] 10-03: Domain health monitoring and alerting
+
+### Phase 11: Documentation
+**Goal**: Complete documentation for users, developers, and API consumers
+**Depends on**: Phase 10
+**Research**: Unlikely (documentation patterns)
+**Plans**: 3 plans
+
+Plans:
+- [ ] 11-01: API documentation with OpenAPI spec
+- [ ] 11-02: User guides and getting started documentation
+- [ ] 11-03: Architecture documentation and decision records
+
+### Phase 12: UI/UX Polish
+**Goal**: Production-quality UI with loading states, error handling, and onboarding
+**Depends on**: Phase 11
+**Research**: Unlikely (React/Next.js patterns)
+**Plans**: 3 plans
+
+Plans:
+- [ ] 12-01: Loading states, skeletons, and optimistic updates
+- [ ] 12-02: Error boundaries and user-friendly error messages
+- [ ] 12-03: Onboarding flow and empty states
 
 ## Progress
 
@@ -185,17 +176,17 @@ Phases execute in numeric order: 1 → 2 → 3 → ... → 12
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 3/3 | Complete | 2026-01-13 |
-| 2. Email Accounts | 4/4 | Complete | 2026-01-12 |
-| 3. Domain Automation | 0/4 | Not started | - |
-| 4. DNS Automation | 0/3 | Not started | - |
-| 5. Mailbox Provisioning | 0/3 | Not started | - |
-| 6. Warmup System | 0/3 | Not started | - |
-| 7. Lead Management | 0/3 | Not started | - |
-| 8. Campaign Engine | 0/4 | Not started | - |
-| 9. Sending Engine | 0/4 | Not started | - |
-| 10. Deliverability | 0/4 | Not started | - |
-| 11. Reply Management | 0/3 | Not started | - |
-| 12. SaaS & Billing | 0/4 | Not started | - |
+| 1. Testing Infrastructure | 0/3 | Not started | - |
+| 2. Type Safety | 0/3 | Not started | - |
+| 3. Security Hardening | 0/4 | Not started | - |
+| 4. Database Optimization | 0/3 | Not started | - |
+| 5. Error Handling | 0/3 | Not started | - |
+| 6. Monitoring & Logging | 0/3 | Not started | - |
+| 7. Feature - Warmup | 0/2 | Not started | - |
+| 8. Feature - Sending | 0/3 | Not started | - |
+| 9. Feature - Deliverability | 0/3 | Not started | - |
+| 10. Feature - Domains | 0/3 | Not started | - |
+| 11. Documentation | 0/3 | Not started | - |
+| 12. UI/UX Polish | 0/3 | Not started | - |
 
-**Total: 42 plans across 12 phases**
+**Total: 36 plans across 12 phases**
