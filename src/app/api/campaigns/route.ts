@@ -25,19 +25,28 @@ import {
   ValidationError,
 } from '@/lib/errors'
 import { handleApiError } from '@/lib/errors/handler'
+import { loggers, logError } from '@/lib/logger'
+
+const log = loggers.campaign
 
 // GET /api/campaigns - List campaigns
 // Optimized: Uses aggregated counts in single query instead of N+1
 export async function GET(request: NextRequest) {
+  const startTime = Date.now()
+
   // Apply rate limiting
   const { limited, response, result } = applyRateLimit(request, apiLimiter)
-  if (limited) return response!
+  if (limited) {
+    log.warn({ path: '/api/campaigns', method: 'GET' }, 'Rate limit exceeded for campaigns list')
+    return response!
+  }
 
   try {
     const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
+      log.warn({ authError: authError?.message }, 'Authentication failed for campaigns list')
       throw new AuthenticationError()
     }
 
@@ -72,8 +81,20 @@ export async function GET(request: NextRequest) {
     )
 
     if (error) {
+      log.error({ error: String(error), organizationId: userData.organization_id }, 'Failed to fetch campaigns from database')
       throw new DatabaseError('Failed to fetch campaigns', { originalError: String(error) })
     }
+
+    const duration = Date.now() - startTime
+    log.info({
+      userId: user.id,
+      organizationId: userData.organization_id,
+      campaignsCount: campaigns?.length || 0,
+      page,
+      limit,
+      statusFilter: status,
+      durationMs: duration,
+    }, 'Campaigns list fetched successfully')
 
     const jsonResponse = NextResponse.json({
       campaigns: campaigns?.map(c => ({
@@ -105,6 +126,9 @@ export async function GET(request: NextRequest) {
     })
     return addRateLimitHeaders(jsonResponse, result)
   } catch (error) {
+    if (error instanceof Error) {
+      logError(error, { operation: 'list_campaigns', path: '/api/campaigns' })
+    }
     return handleApiError(error)
   }
 }
@@ -113,13 +137,19 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   // Apply stricter rate limiting for write operations
   const { limited, response, result } = applyRateLimit(request, writeLimiter)
-  if (limited) return response!
+  if (limited) {
+    log.warn({ path: '/api/campaigns', method: 'POST' }, 'Rate limit exceeded for campaign creation')
+    return response!
+  }
+
+  const startTime = Date.now()
 
   try {
     const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
+      log.warn({ authError: authError?.message }, 'Authentication failed for campaign creation')
       throw new AuthenticationError()
     }
 
@@ -128,6 +158,10 @@ export async function POST(request: NextRequest) {
     // Validate request body with Zod schema
     const validationResult = createCampaignSchema.safeParse(body)
     if (!validationResult.success) {
+      log.warn({
+        userId: user.id,
+        validationErrors: validationResult.error.issues,
+      }, 'Campaign creation validation failed')
       throw new ValidationError(
         validationResult.error.issues[0]?.message || 'Invalid request body',
         { issues: validationResult.error.issues }
@@ -164,8 +198,24 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (createError) {
+      log.error({
+        error: String(createError),
+        userId: user.id,
+        organizationId: userData.organization_id,
+        campaignName: name,
+      }, 'Failed to create campaign in database')
       throw new DatabaseError('Failed to create campaign', { originalError: String(createError) })
     }
+
+    const duration = Date.now() - startTime
+    log.info({
+      userId: user.id,
+      organizationId: userData.organization_id,
+      campaignId: campaign.id,
+      campaignName: campaign.name,
+      campaignType: campaign.type,
+      durationMs: duration,
+    }, 'Campaign created successfully')
 
     // Invalidate campaign cache
     invalidateCampaignCache(userData.organization_id)
@@ -200,6 +250,9 @@ export async function POST(request: NextRequest) {
       result
     )
   } catch (error) {
+    if (error instanceof Error) {
+      logError(error, { operation: 'create_campaign', path: '/api/campaigns' })
+    }
     return handleApiError(error)
   }
 }

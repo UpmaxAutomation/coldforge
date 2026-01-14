@@ -324,3 +324,71 @@ export function getExternalWarmupPool(
   // For now, returns empty - would be implemented with external API
   return []
 }
+
+/**
+ * Get a random send time within business hours for warmup emails.
+ * Distributes sends between 8 AM and 6 PM to mimic natural email behavior.
+ */
+export function getRandomSendTime(): Date {
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+
+  // Send window: 8 AM to 6 PM
+  const startHour = 8
+  const endHour = 18
+
+  // Calculate random time within window
+  const windowMinutes = (endHour - startHour) * 60
+  const randomMinutes = Math.floor(Math.random() * windowMinutes)
+  today.setHours(startHour)
+  today.setMinutes(randomMinutes)
+  today.setSeconds(Math.floor(Math.random() * 60))
+
+  // If scheduled time is in the past, schedule for later today or tomorrow
+  if (today <= now) {
+    // Add random delay (30 min to 3 hours) from now
+    const delayMinutes = 30 + Math.floor(Math.random() * 150)
+    return new Date(now.getTime() + delayMinutes * 60 * 1000)
+  }
+
+  return today
+}
+
+/**
+ * Pair warmup accounts for sending emails to each other.
+ * Creates balanced pairs ensuring each account both sends and receives.
+ */
+export function pairWarmupAccounts(accountIds: string[]): Array<{ from: string; to: string }> {
+  if (accountIds.length < 2) {
+    return []
+  }
+
+  const pairs: Array<{ from: string; to: string }> = []
+
+  // Create pairs ensuring each account sends and receives
+  for (let i = 0; i < accountIds.length; i++) {
+    for (let j = i + 1; j < accountIds.length; j++) {
+      const fromId = accountIds[i]
+      const toId = accountIds[j]
+
+      if (!fromId || !toId) continue
+
+      // Add pair in both directions
+      pairs.push({ from: fromId, to: toId })
+      pairs.push({ from: toId, to: fromId })
+    }
+  }
+
+  // Shuffle pairs for randomization
+  for (let i = pairs.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    const temp = pairs[i]
+    const swapVal = pairs[j]
+    if (temp !== undefined && swapVal !== undefined) {
+      pairs[i] = swapVal
+      pairs[j] = temp
+    }
+  }
+
+  return pairs
+}
