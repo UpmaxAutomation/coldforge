@@ -2,6 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { checkDnsHealth } from '@/lib/dns'
 import { createDomainSchema } from '@/lib/schemas'
+import {
+  AuthenticationError,
+  BadRequestError,
+  ConflictError,
+  DatabaseError,
+  ValidationError,
+} from '@/lib/errors'
+import { handleApiError } from '@/lib/errors/handler'
 
 // Type for domain response
 interface DomainResponse {
@@ -30,7 +38,7 @@ export async function GET() {
 
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      throw new AuthenticationError()
     }
 
     // Get user's organization
@@ -41,7 +49,7 @@ export async function GET() {
       .single() as { data: { organization_id: string } | null }
 
     if (!profile?.organization_id) {
-      return NextResponse.json({ error: 'No organization found' }, { status: 400 })
+      throw new BadRequestError('No organization found')
     }
 
     // Get domains
@@ -52,16 +60,12 @@ export async function GET() {
       .order('created_at', { ascending: false }) as { data: DomainResponse[] | null; error: unknown }
 
     if (error) {
-      throw error
+      throw new DatabaseError('Failed to fetch domains', { originalError: String(error) })
     }
 
     return NextResponse.json({ domains: domains || [] })
   } catch (error) {
-    console.error('Failed to fetch domains:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch domains' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
@@ -72,7 +76,7 @@ export async function POST(request: NextRequest) {
 
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      throw new AuthenticationError()
     }
 
     // Get user's organization
@@ -83,7 +87,7 @@ export async function POST(request: NextRequest) {
       .single() as { data: { organization_id: string } | null }
 
     if (!profile?.organization_id) {
-      return NextResponse.json({ error: 'No organization found' }, { status: 400 })
+      throw new BadRequestError('No organization found')
     }
 
     const body = await request.json()
@@ -91,8 +95,10 @@ export async function POST(request: NextRequest) {
     // Validate request body with Zod schema
     const validationResult = createDomainSchema.safeParse(body)
     if (!validationResult.success) {
-      const errorMessage = validationResult.error.issues[0]?.message || 'Invalid request body'
-      return NextResponse.json({ error: errorMessage }, { status: 400 })
+      throw new ValidationError(
+        validationResult.error.issues[0]?.message || 'Invalid request body',
+        { issues: validationResult.error.issues }
+      )
     }
 
     const { domain, dns_provider } = validationResult.data
@@ -127,20 +133,13 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       if (error.code === '23505') {
-        return NextResponse.json(
-          { error: 'Domain already exists' },
-          { status: 400 }
-        )
+        throw new ConflictError('Domain already exists')
       }
-      throw error
+      throw new DatabaseError('Failed to add domain', { originalError: String(error) })
     }
 
     return NextResponse.json({ domain: newDomain }, { status: 201 })
   } catch (error) {
-    console.error('Failed to add domain:', error)
-    return NextResponse.json(
-      { error: 'Failed to add domain' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

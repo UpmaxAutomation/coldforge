@@ -18,6 +18,13 @@ import {
 } from '@/lib/rate-limit/middleware'
 import { invalidateCampaignCache } from '@/lib/cache/queries'
 import { getCampaignsWithStats } from '@/lib/db/queries'
+import {
+  AuthenticationError,
+  BadRequestError,
+  DatabaseError,
+  ValidationError,
+} from '@/lib/errors'
+import { handleApiError } from '@/lib/errors/handler'
 
 // GET /api/campaigns - List campaigns
 // Optimized: Uses aggregated counts in single query instead of N+1
@@ -31,7 +38,7 @@ export async function GET(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      throw new AuthenticationError()
     }
 
     // Get user's organization
@@ -42,7 +49,7 @@ export async function GET(request: NextRequest) {
       .single() as { data: { organization_id: string } | null }
 
     if (!userData?.organization_id) {
-      return NextResponse.json({ error: 'No organization found' }, { status: 400 })
+      throw new BadRequestError('No organization found')
     }
 
     // Parse and validate query parameters
@@ -65,8 +72,7 @@ export async function GET(request: NextRequest) {
     )
 
     if (error) {
-      console.error('Error fetching campaigns:', error)
-      return NextResponse.json({ error: 'Failed to fetch campaigns' }, { status: 500 })
+      throw new DatabaseError('Failed to fetch campaigns', { originalError: String(error) })
     }
 
     const jsonResponse = NextResponse.json({
@@ -99,11 +105,7 @@ export async function GET(request: NextRequest) {
     })
     return addRateLimitHeaders(jsonResponse, result)
   } catch (error) {
-    console.error('Campaigns API error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
@@ -118,10 +120,7 @@ export async function POST(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return addRateLimitHeaders(
-        NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
-        result
-      )
+      throw new AuthenticationError()
     }
 
     const body = await request.json()
@@ -129,10 +128,9 @@ export async function POST(request: NextRequest) {
     // Validate request body with Zod schema
     const validationResult = createCampaignSchema.safeParse(body)
     if (!validationResult.success) {
-      const errorMessage = validationResult.error.issues[0]?.message || 'Invalid request body'
-      return addRateLimitHeaders(
-        NextResponse.json({ error: errorMessage }, { status: 400 }),
-        result
+      throw new ValidationError(
+        validationResult.error.issues[0]?.message || 'Invalid request body',
+        { issues: validationResult.error.issues }
       )
     }
 
@@ -146,10 +144,7 @@ export async function POST(request: NextRequest) {
       .single() as { data: { organization_id: string } | null }
 
     if (!userData?.organization_id) {
-      return addRateLimitHeaders(
-        NextResponse.json({ error: 'No organization found' }, { status: 400 }),
-        result
-      )
+      throw new BadRequestError('No organization found')
     }
 
     // Create campaign
@@ -169,11 +164,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (createError) {
-      console.error('Error creating campaign:', createError)
-      return addRateLimitHeaders(
-        NextResponse.json({ error: 'Failed to create campaign' }, { status: 500 }),
-        result
-      )
+      throw new DatabaseError('Failed to create campaign', { originalError: String(createError) })
     }
 
     // Invalidate campaign cache
@@ -209,10 +200,6 @@ export async function POST(request: NextRequest) {
       result
     )
   } catch (error) {
-    console.error('Campaign create error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

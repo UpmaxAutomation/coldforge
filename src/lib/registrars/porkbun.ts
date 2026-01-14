@@ -5,6 +5,9 @@ import type {
   DnsRecord,
   RegistrarClient,
 } from './types'
+import { circuitBreakers } from '@/lib/circuit-breaker/services'
+import { CircuitOpenError } from '@/lib/circuit-breaker'
+import { retryApi, isRetryableStatusCode } from '@/lib/retry'
 
 const PORKBUN_API_BASE = 'https://porkbun.com/api/json/v3'
 
@@ -22,25 +25,53 @@ export class PorkbunRegistrar implements RegistrarClient {
   }
 
   private async request<T>(endpoint: string, body: Record<string, unknown> = {}): Promise<T> {
-    const response = await fetch(`${PORKBUN_API_BASE}${endpoint}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        apikey: this.config.apiKey,
-        secretapikey: this.config.secretApiKey,
-        ...body,
-      }),
+    // Use circuit breaker for all Porkbun API calls
+    // Retry logic is inside the circuit breaker to handle transient failures
+    // before they trip the circuit
+    return circuitBreakers.porkbun.execute(async () => {
+      return retryApi(async () => {
+        const response = await fetch(`${PORKBUN_API_BASE}${endpoint}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            apikey: this.config.apiKey,
+            secretapikey: this.config.secretApiKey,
+            ...body,
+          }),
+        })
+
+        // Check for retryable HTTP status codes
+        if (!response.ok && isRetryableStatusCode(response.status)) {
+          const text = await response.text()
+          throw new Error(`HTTP ${response.status}: ${text}`)
+        }
+
+        const data = await response.json()
+
+        if (data.status !== 'SUCCESS') {
+          throw new Error(data.message || 'Porkbun API error')
+        }
+
+        return data
+      })
     })
+  }
 
-    const data = await response.json()
+  // Check if the circuit breaker is allowing requests
+  isAvailable(): boolean {
+    return circuitBreakers.porkbun.isAvailable()
+  }
 
-    if (data.status !== 'SUCCESS') {
-      throw new Error(data.message || 'Porkbun API error')
-    }
+  // Get retry time if circuit is open
+  getRetryAfter(): number {
+    return circuitBreakers.porkbun.getRetryAfter()
+  }
 
-    return data
+  // Check if an error is a circuit breaker error
+  static isCircuitOpenError(error: unknown): error is CircuitOpenError {
+    return error instanceof CircuitOpenError
   }
 
   async checkAvailability(domain: string): Promise<DomainSearchResult> {

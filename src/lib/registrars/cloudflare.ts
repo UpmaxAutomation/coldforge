@@ -5,6 +5,9 @@ import type {
   DnsRecord,
   RegistrarClient,
 } from './types'
+import { circuitBreakers } from '@/lib/circuit-breaker/services'
+import { CircuitOpenError } from '@/lib/circuit-breaker'
+import { retryApi, isRetryableStatusCode } from '@/lib/retry'
 
 const CLOUDFLARE_API_BASE = 'https://api.cloudflare.com/client/v4'
 
@@ -25,23 +28,51 @@ export class CloudflareRegistrar implements RegistrarClient {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
-    const response = await fetch(`${CLOUDFLARE_API_BASE}${endpoint}`, {
-      ...options,
-      headers: {
-        'Authorization': `Bearer ${this.config.apiToken}`,
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
+    // Use circuit breaker for all Cloudflare API calls
+    // Retry logic is inside the circuit breaker to handle transient failures
+    // before they trip the circuit
+    return circuitBreakers.cloudflare.execute(async () => {
+      return retryApi(async () => {
+        const response = await fetch(`${CLOUDFLARE_API_BASE}${endpoint}`, {
+          ...options,
+          headers: {
+            'Authorization': `Bearer ${this.config.apiToken}`,
+            'Content-Type': 'application/json',
+            ...options.headers,
+          },
+        })
+
+        // Check for retryable HTTP status codes
+        if (!response.ok && isRetryableStatusCode(response.status)) {
+          const text = await response.text()
+          throw new Error(`HTTP ${response.status}: ${text}`)
+        }
+
+        const data = await response.json()
+
+        if (!data.success) {
+          const errors = data.errors?.map((e: { message: string }) => e.message).join(', ')
+          throw new Error(errors || 'Cloudflare API error')
+        }
+
+        return data.result
+      })
     })
+  }
 
-    const data = await response.json()
+  // Check if the circuit breaker is allowing requests
+  isAvailable(): boolean {
+    return circuitBreakers.cloudflare.isAvailable()
+  }
 
-    if (!data.success) {
-      const errors = data.errors?.map((e: { message: string }) => e.message).join(', ')
-      throw new Error(errors || 'Cloudflare API error')
-    }
+  // Get retry time if circuit is open
+  getRetryAfter(): number {
+    return circuitBreakers.cloudflare.getRetryAfter()
+  }
 
-    return data.result
+  // Check if an error is a circuit breaker error
+  static isCircuitOpenError(error: unknown): error is CircuitOpenError {
+    return error instanceof CircuitOpenError
   }
 
   async checkAvailability(domain: string): Promise<DomainSearchResult> {

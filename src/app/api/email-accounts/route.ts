@@ -11,6 +11,13 @@ import {
 import { createEmailAccountSchema } from '@/lib/schemas'
 import { invalidateEmailAccountsCache } from '@/lib/cache/queries'
 import { validateRequest } from '@/lib/validation'
+import {
+  AuthenticationError,
+  BadRequestError,
+  ConflictError,
+  DatabaseError,
+} from '@/lib/errors'
+import { handleApiError } from '@/lib/errors/handler'
 
 // Type for email account response
 interface EmailAccountResponse {
@@ -37,7 +44,7 @@ export async function GET(request: NextRequest) {
 
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      throw new AuthenticationError()
     }
 
     // Get user's organization
@@ -48,7 +55,7 @@ export async function GET(request: NextRequest) {
       .single() as { data: { organization_id: string } | null }
 
     if (!profile?.organization_id) {
-      return NextResponse.json({ error: 'No organization found' }, { status: 400 })
+      throw new BadRequestError('No organization found')
     }
 
     // Get email accounts (credentials are never returned)
@@ -59,7 +66,7 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false }) as { data: EmailAccountResponse[] | null; error: unknown }
 
     if (error) {
-      throw error
+      throw new DatabaseError('Failed to fetch email accounts', { originalError: String(error) })
     }
 
     // Transform to frontend-friendly format
@@ -71,11 +78,7 @@ export async function GET(request: NextRequest) {
     const jsonResponse = NextResponse.json({ accounts: transformedAccounts })
     return addRateLimitHeaders(jsonResponse, result)
   } catch (error) {
-    console.error('Failed to fetch email accounts:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch email accounts' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
@@ -90,7 +93,7 @@ export async function POST(request: NextRequest) {
 
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      throw new AuthenticationError()
     }
 
     // Get user's organization
@@ -101,7 +104,7 @@ export async function POST(request: NextRequest) {
       .single() as { data: { organization_id: string } | null }
 
     if (!profile?.organization_id) {
-      return NextResponse.json({ error: 'No organization found' }, { status: 400 })
+      throw new BadRequestError('No organization found')
     }
 
     // Validate request body with Zod schema
@@ -163,12 +166,9 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       if (error.code === '23505') {
-        return NextResponse.json(
-          { error: 'An account with this email already exists' },
-          { status: 400 }
-        )
+        throw new ConflictError('An account with this email already exists')
       }
-      throw error
+      throw new DatabaseError('Failed to create email account', { originalError: String(error) })
     }
 
     // Invalidate email accounts cache
@@ -196,10 +196,6 @@ export async function POST(request: NextRequest) {
     }, { status: 201 })
     return addRateLimitHeaders(jsonResponse, result)
   } catch (error) {
-    console.error('Failed to create email account:', error)
-    return NextResponse.json(
-      { error: 'Failed to create email account' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

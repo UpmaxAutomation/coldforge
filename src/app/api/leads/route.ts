@@ -10,6 +10,13 @@ import {
   applyRateLimit,
   addRateLimitHeaders,
 } from '@/lib/rate-limit/middleware'
+import {
+  AuthenticationError,
+  BadRequestError,
+  DatabaseError,
+  ValidationError,
+} from '@/lib/errors'
+import { handleApiError } from '@/lib/errors/handler'
 
 // GET /api/leads - List all leads
 export async function GET(request: NextRequest) {
@@ -22,7 +29,7 @@ export async function GET(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      throw new AuthenticationError()
     }
 
     // Get user's organization
@@ -33,7 +40,7 @@ export async function GET(request: NextRequest) {
       .single() as { data: { organization_id: string } | null }
 
     if (!userData?.organization_id) {
-      return NextResponse.json({ error: 'No organization found' }, { status: 400 })
+      throw new BadRequestError('No organization found')
     }
 
     // Parse and validate query parameters
@@ -64,8 +71,7 @@ export async function GET(request: NextRequest) {
     const { data: leads, error, count } = await query
 
     if (error) {
-      console.error('Error fetching leads:', error)
-      return NextResponse.json({ error: 'Failed to fetch leads' }, { status: 500 })
+      throw new DatabaseError('Failed to fetch leads', { originalError: String(error) })
     }
 
     const jsonResponse = NextResponse.json({
@@ -79,8 +85,7 @@ export async function GET(request: NextRequest) {
     })
     return addRateLimitHeaders(jsonResponse, result)
   } catch (error) {
-    console.error('Error in GET /api/leads:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return handleApiError(error)
   }
 }
 
@@ -95,7 +100,7 @@ export async function POST(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      throw new AuthenticationError()
     }
 
     const { data: userData } = await supabase
@@ -105,7 +110,7 @@ export async function POST(request: NextRequest) {
       .single() as { data: { organization_id: string } | null }
 
     if (!userData?.organization_id) {
-      return NextResponse.json({ error: 'No organization found' }, { status: 400 })
+      throw new BadRequestError('No organization found')
     }
 
     const body = await request.json()
@@ -113,8 +118,10 @@ export async function POST(request: NextRequest) {
     // Validate request body with Zod schema
     const validationResult = createLeadSchema.safeParse(body)
     if (!validationResult.success) {
-      const errorMessage = validationResult.error.issues[0]?.message || 'Invalid request body'
-      return NextResponse.json({ error: errorMessage }, { status: 400 })
+      throw new ValidationError(
+        validationResult.error.issues[0]?.message || 'Invalid request body',
+        { issues: validationResult.error.issues }
+      )
     }
 
     const { email, firstName, lastName, company, title, phone, linkedinUrl, listId, customFields } = validationResult.data
@@ -138,14 +145,12 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) {
-      console.error('Error creating lead:', error)
-      return NextResponse.json({ error: 'Failed to create lead' }, { status: 500 })
+      throw new DatabaseError('Failed to create lead', { originalError: String(error) })
     }
 
     const jsonResponse = NextResponse.json({ lead }, { status: 201 })
     return addRateLimitHeaders(jsonResponse, result)
   } catch (error) {
-    console.error('Error in POST /api/leads:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return handleApiError(error)
   }
 }

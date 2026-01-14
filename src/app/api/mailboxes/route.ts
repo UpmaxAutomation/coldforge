@@ -4,6 +4,14 @@ import {
   createMailboxSchema,
   listMailboxesQuerySchema,
 } from '@/lib/schemas'
+import {
+  AuthenticationError,
+  ConflictError,
+  DatabaseError,
+  NotFoundError,
+  ValidationError,
+} from '@/lib/errors'
+import { handleApiError } from '@/lib/errors/handler'
 
 interface MailboxRecord {
   id: string
@@ -30,7 +38,7 @@ export async function GET(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      throw new AuthenticationError()
     }
 
     // Parse and validate query parameters
@@ -56,7 +64,7 @@ export async function GET(request: NextRequest) {
       .single() as { data: { organization_id: string } | null }
 
     if (!profile) {
-      return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
+      throw new NotFoundError('Profile')
     }
 
     // Build query
@@ -82,8 +90,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (error) {
-      console.error('Error fetching mailboxes:', error)
-      return NextResponse.json({ error: 'Failed to fetch mailboxes' }, { status: 500 })
+      throw new DatabaseError('Failed to fetch mailboxes', { originalError: error.message })
     }
 
     return NextResponse.json({
@@ -113,11 +120,7 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error) {
-    console.error('Mailboxes API error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }
 
@@ -128,7 +131,7 @@ export async function POST(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      throw new AuthenticationError()
     }
 
     const body = await request.json()
@@ -136,8 +139,10 @@ export async function POST(request: NextRequest) {
     // Validate request body with Zod schema
     const validationResult = createMailboxSchema.safeParse(body)
     if (!validationResult.success) {
-      const errorMessage = validationResult.error.issues[0]?.message || 'Invalid request body'
-      return NextResponse.json({ error: errorMessage }, { status: 400 })
+      throw new ValidationError(
+        validationResult.error.issues[0]?.message || 'Invalid request body',
+        { issues: validationResult.error.issues }
+      )
     }
 
     const {
@@ -159,7 +164,7 @@ export async function POST(request: NextRequest) {
       .single() as { data: { organization_id: string } | null }
 
     if (!profile) {
-      return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
+      throw new NotFoundError('Profile')
     }
 
     // Verify domain belongs to organization
@@ -174,15 +179,12 @@ export async function POST(request: NextRequest) {
       }
 
     if (domainError || !domain) {
-      return NextResponse.json({ error: 'Domain not found' }, { status: 404 })
+      throw new NotFoundError('Domain', domainId)
     }
 
     // Validate email matches domain
     if (!email.endsWith(`@${domain.domain}`)) {
-      return NextResponse.json(
-        { error: `Email must end with @${domain.domain}` },
-        { status: 400 }
-      )
+      throw new ValidationError(`Email must end with @${domain.domain}`)
     }
 
     // Check if mailbox already exists
@@ -193,10 +195,7 @@ export async function POST(request: NextRequest) {
       .single() as { data: { id: string } | null }
 
     if (existingMailbox) {
-      return NextResponse.json(
-        { error: 'A mailbox with this email already exists' },
-        { status: 409 }
-      )
+      throw new ConflictError('A mailbox with this email already exists')
     }
 
     // TODO: If provider is google_workspace or microsoft_365, provision via API
@@ -221,8 +220,7 @@ export async function POST(request: NextRequest) {
       .single() as { data: MailboxRecord | null; error: Error | null }
 
     if (createError) {
-      console.error('Error creating mailbox:', createError)
-      return NextResponse.json({ error: 'Failed to create mailbox' }, { status: 500 })
+      throw new DatabaseError('Failed to create mailbox', { originalError: createError.message })
     }
 
     return NextResponse.json({
@@ -237,10 +235,6 @@ export async function POST(request: NextRequest) {
       },
     }, { status: 201 })
   } catch (error) {
-    console.error('Mailbox creation error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

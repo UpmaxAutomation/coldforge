@@ -4,6 +4,9 @@ import type {
   DomainPurchaseResult,
   RegistrarClient,
 } from './types'
+import { circuitBreakers } from '@/lib/circuit-breaker/services'
+import { CircuitOpenError } from '@/lib/circuit-breaker'
+import { retryApi, isRetryableStatusCode } from '@/lib/retry'
 
 const NAMECHEAP_API_BASE = 'https://api.namecheap.com/xml.response'
 const NAMECHEAP_SANDBOX_API = 'https://api.sandbox.namecheap.com/xml.response'
@@ -46,17 +49,45 @@ export class NamecheapRegistrar implements RegistrarClient {
   }
 
   private async request(command: string, params: Record<string, string> = {}): Promise<string> {
-    const url = this.buildUrl(command, params)
-    const response = await fetch(url)
-    const text = await response.text()
+    // Use circuit breaker for all Namecheap API calls
+    // Retry logic is inside the circuit breaker to handle transient failures
+    // before they trip the circuit
+    return circuitBreakers.namecheap.execute(async () => {
+      return retryApi(async () => {
+        const url = this.buildUrl(command, params)
+        const response = await fetch(url)
 
-    // Check for API errors in XML response
-    if (text.includes('<Status>ERROR</Status>')) {
-      const errorMatch = text.match(/<Error[^>]*>([^<]+)<\/Error>/)
-      throw new Error(errorMatch?.[1] || 'Namecheap API error')
-    }
+        // Check for retryable HTTP status codes
+        if (!response.ok && isRetryableStatusCode(response.status)) {
+          throw new Error(`HTTP ${response.status}`)
+        }
 
-    return text
+        const text = await response.text()
+
+        // Check for API errors in XML response
+        if (text.includes('<Status>ERROR</Status>')) {
+          const errorMatch = text.match(/<Error[^>]*>([^<]+)<\/Error>/)
+          throw new Error(errorMatch?.[1] || 'Namecheap API error')
+        }
+
+        return text
+      })
+    })
+  }
+
+  // Check if the circuit breaker is allowing requests
+  isAvailable(): boolean {
+    return circuitBreakers.namecheap.isAvailable()
+  }
+
+  // Get retry time if circuit is open
+  getRetryAfter(): number {
+    return circuitBreakers.namecheap.getRetryAfter()
+  }
+
+  // Check if an error is a circuit breaker error
+  static isCircuitOpenError(error: unknown): error is CircuitOpenError {
+    return error instanceof CircuitOpenError
   }
 
   private parseXmlValue(xml: string, tag: string): string | null {

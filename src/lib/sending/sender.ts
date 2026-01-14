@@ -2,6 +2,7 @@
 
 import nodemailer from 'nodemailer'
 import type { EmailContent } from './types'
+import { sendWithRetry, classifySmtpError } from '@/lib/retry/smtp'
 
 interface SmtpConfig {
   host: string
@@ -17,6 +18,9 @@ interface SendResult {
   success: boolean
   messageId?: string
   error?: string
+  errorCategory?: string
+  attempts?: number
+  totalTime?: number
 }
 
 // Create SMTP transporter
@@ -31,11 +35,63 @@ export function createTransporter(config: SmtpConfig): nodemailer.Transporter {
     maxMessages: 100,
     rateDelta: 1000,
     rateLimit: 5,
+    connectionTimeout: 30000,
+    greetingTimeout: 30000,
+    socketTimeout: 60000,
   })
 }
 
-// Send email via SMTP
+// Send email via SMTP with retry logic
 export async function sendEmail(
+  transporter: nodemailer.Transporter,
+  content: EmailContent,
+  options?: {
+    maxRetries?: number
+    onRetry?: (error: Error, attempt: number, delay: number) => void
+  }
+): Promise<SendResult> {
+  const result = await sendWithRetry(
+    async () => {
+      return await transporter.sendMail({
+        from: `"${content.from.name}" <${content.from.email}>`,
+        to: content.to.name
+          ? `"${content.to.name}" <${content.to.email}>`
+          : content.to.email,
+        subject: content.subject,
+        text: content.text,
+        html: content.html || undefined,
+        replyTo: content.replyTo,
+        headers: content.headers,
+      })
+    },
+    {
+      maxRetries: options?.maxRetries ?? 3,
+      onRetry: options?.onRetry,
+    }
+  )
+
+  if (result.success && result.data) {
+    return {
+      success: true,
+      messageId: result.data.messageId,
+      attempts: result.attempts,
+      totalTime: result.totalTime,
+    }
+  }
+
+  return {
+    success: false,
+    error: result.error,
+    errorCategory: result.error
+      ? classifySmtpError(new Error(result.error))
+      : undefined,
+    attempts: result.attempts,
+    totalTime: result.totalTime,
+  }
+}
+
+// Send email without retry (for testing or specific use cases)
+export async function sendEmailNoRetry(
   transporter: nodemailer.Transporter,
   content: EmailContent
 ): Promise<SendResult> {
