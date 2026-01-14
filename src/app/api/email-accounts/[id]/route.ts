@@ -6,6 +6,7 @@ import { testImapConnection, ImapConfig } from '@/lib/imap'
 import { testGoogleConnection } from '@/lib/google'
 import { testMicrosoftConnection } from '@/lib/microsoft'
 import { logAuditEventAsync, getRequestMetadata } from '@/lib/audit'
+import { invalidateEmailAccountsCache } from '@/lib/cache/queries'
 
 interface RouteContext {
   params: Promise<{ id: string }>
@@ -131,6 +132,20 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       throw error
     }
 
+    // Invalidate email accounts cache - get org_id from account
+    if (account) {
+      // We need to get the org_id for cache invalidation
+      const { data: profile } = await supabase
+        .from('users')
+        .select('organization_id')
+        .eq('id', user.id)
+        .single() as { data: { organization_id: string } | null }
+
+      if (profile?.organization_id) {
+        invalidateEmailAccountsCache(profile.organization_id)
+      }
+    }
+
     return NextResponse.json({
       account: account ? {
         ...account,
@@ -171,6 +186,11 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
 
     if (error) {
       throw error
+    }
+
+    // Invalidate email accounts cache
+    if (profile?.organization_id) {
+      invalidateEmailAccountsCache(profile.organization_id)
     }
 
     // Audit log email account deletion

@@ -8,33 +8,10 @@ import {
 } from '@/lib/replies'
 import { listRepliesQuerySchema, createReplySchema } from '@/lib/schemas'
 import { validateRequest, validateQuery } from '@/lib/validation'
-
-interface ReplyRow {
-  id: string
-  organization_id: string
-  campaign_id: string | null
-  lead_id: string | null
-  mailbox_id: string
-  thread_id: string
-  message_id: string
-  in_reply_to: string | null
-  from_email: string
-  from_name: string | null
-  to_email: string
-  subject: string
-  body_text: string
-  body_html: string | null
-  category: ReplyCategory
-  sentiment: ReplySentiment
-  status: ReplyStatus
-  is_auto_detected: boolean
-  snoozed_until: string | null
-  received_at: string
-  created_at: string
-  updated_at: string
-}
+import { getRepliesWithContext, getInboxStats } from '@/lib/db/queries'
 
 // GET /api/replies - List replies (inbox)
+// Optimized: Uses single query with joins instead of multiple queries
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
@@ -61,69 +38,27 @@ export async function GET(request: NextRequest) {
 
     const { page, limit, campaignId, mailboxId, category, sentiment, status, search } = queryValidation.data
 
-    // Build query
-    let query = supabase
-      .from('replies')
-      .select('*', { count: 'exact' })
-      .eq('organization_id', profile.organization_id)
-      .order('received_at', { ascending: false })
+    // Use optimized queries in parallel
+    const [repliesResult, inboxStats] = await Promise.all([
+      getRepliesWithContext(profile.organization_id, {
+        page,
+        limit,
+        campaignId,
+        mailboxId,
+        category: category as ReplyCategory | undefined,
+        sentiment: sentiment as ReplySentiment | undefined,
+        status: status as ReplyStatus | undefined,
+        search,
+      }),
+      getInboxStats(profile.organization_id),
+    ])
 
-    // Apply filters
-    if (campaignId) {
-      query = query.eq('campaign_id', campaignId)
-    }
-    if (mailboxId) {
-      query = query.eq('mailbox_id', mailboxId)
-    }
-    if (category) {
-      query = query.eq('category', category)
-    }
-    if (sentiment) {
-      query = query.eq('sentiment', sentiment)
-    }
-    if (status) {
-      query = query.eq('status', status)
-    }
-    if (search) {
-      query = query.or(`subject.ilike.%${search}%,body_text.ilike.%${search}%,from_email.ilike.%${search}%`)
-    }
-
-    // Pagination
-    const from = (page - 1) * limit
-    const to = from + limit - 1
-    query = query.range(from, to)
-
-    const { data: replies, error, count } = await query as {
-      data: ReplyRow[] | null
-      error: Error | null
-      count: number | null
-    }
-
-    if (error) {
-      throw error
-    }
-
-    // Get inbox stats
-    const { data: stats } = await supabase
-      .from('replies')
-      .select('status, category', { count: 'exact' })
-      .eq('organization_id', profile.organization_id) as {
-        data: Array<{ status: ReplyStatus; category: ReplyCategory }> | null
-      }
-
-    const inboxStats = {
-      total: stats?.length || 0,
-      unread: stats?.filter(r => r.status === 'unread').length || 0,
-      interested: stats?.filter(r => r.category === 'interested').length || 0,
-      notInterested: stats?.filter(r => r.category === 'not_interested').length || 0,
-      outOfOffice: stats?.filter(r => r.category === 'out_of_office').length || 0,
-      meetingRequests: stats?.filter(r => r.category === 'meeting_request').length || 0,
-      needsReply: stats?.filter(r => r.status === 'read' && r.category === 'interested').length || 0,
-      todayReceived: 0 // Would need separate query with date filter
+    if (repliesResult.error) {
+      throw repliesResult.error
     }
 
     return NextResponse.json({
-      replies: replies?.map(r => ({
+      replies: (repliesResult.data || []).map(r => ({
         id: r.id,
         organizationId: r.organization_id,
         campaignId: r.campaign_id,
@@ -146,14 +81,26 @@ export async function GET(request: NextRequest) {
         receivedAt: r.received_at,
         createdAt: r.created_at,
         updatedAt: r.updated_at,
-      })) || [],
+        // Include joined data
+        lead: r.lead,
+        campaign: r.campaign,
+      })),
       pagination: {
         page,
         limit,
-        total: count || 0,
-        totalPages: Math.ceil((count || 0) / limit),
+        total: repliesResult.count || 0,
+        totalPages: Math.ceil((repliesResult.count || 0) / limit),
       },
-      stats: inboxStats,
+      stats: {
+        total: inboxStats.total,
+        unread: inboxStats.unread,
+        interested: inboxStats.interested,
+        notInterested: inboxStats.notInterested,
+        outOfOffice: inboxStats.outOfOffice,
+        meetingRequests: inboxStats.meetingRequests,
+        needsReply: inboxStats.needsReply,
+        todayReceived: 0 // Would need separate query with date filter
+      },
     })
   } catch (error) {
     console.error('List replies error:', error)

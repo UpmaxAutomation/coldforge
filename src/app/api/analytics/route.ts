@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import type { Tables } from '@/types/database'
 import { analyticsQuerySchema } from '@/lib/schemas'
 import { validateQuery } from '@/lib/validation'
+import { cache, cacheKeys, TTL } from '@/lib/cache'
 
 type SentEmail = Tables<'sent_emails'>
 type Reply = Tables<'replies'>
@@ -64,6 +65,19 @@ export async function GET(request: NextRequest) {
     if (!queryValidation.success) return queryValidation.error
 
     const { period, campaignId } = queryValidation.data
+
+    // Check cache first
+    const cacheKey = campaignId
+      ? cacheKeys.analyticsWithCampaign(userData.organization_id, period || '30d', campaignId)
+      : cacheKeys.analytics(userData.organization_id, period || '30d')
+
+    const cachedData = cache.get<Record<string, unknown>>(cacheKey)
+    if (cachedData) {
+      return NextResponse.json({
+        ...cachedData,
+        cached: true,
+      })
+    }
 
     // Calculate date range
     const now = new Date()
@@ -238,7 +252,8 @@ export async function GET(request: NextRequest) {
       key: name,
     }))
 
-    return NextResponse.json({
+    // Build response data
+    const responseData = {
       summary,
       dailyBreakdown,
       heatmapData,
@@ -248,6 +263,14 @@ export async function GET(request: NextRequest) {
         start: startDate.toISOString(),
         end: now.toISOString(),
       },
+    }
+
+    // Cache for 5 minutes (analytics data can be slightly stale)
+    cache.set(cacheKey, responseData, TTL.MEDIUM)
+
+    return NextResponse.json({
+      ...responseData,
+      cached: false,
     })
   } catch (error) {
     console.error('Analytics API error:', error)

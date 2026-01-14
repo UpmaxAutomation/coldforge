@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { invalidateLeadsCache } from '@/lib/cache/queries'
 
 interface LeadImportRow {
   email: string
@@ -163,6 +164,9 @@ export async function POST(request: NextRequest) {
         })
         .eq('id', listId)
     }
+
+    // Invalidate leads cache after import
+    invalidateLeadsCache(userData.organization_id)
 
     return NextResponse.json({
       success: errors.length === 0,

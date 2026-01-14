@@ -9,6 +9,7 @@ import {
   addRateLimitHeaders,
 } from '@/lib/rate-limit/middleware'
 import { createEmailAccountSchema } from '@/lib/schemas'
+import { invalidateEmailAccountsCache } from '@/lib/cache/queries'
 import { validateRequest } from '@/lib/validation'
 
 // Type for email account response
@@ -169,6 +170,9 @@ export async function POST(request: NextRequest) {
       }
       throw error
     }
+
+    // Invalidate email accounts cache
+    invalidateEmailAccountsCache(profile.organization_id)
 
     // Audit log email account creation
     if (account) {

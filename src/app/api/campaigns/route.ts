@@ -4,9 +4,6 @@ import {
   DEFAULT_CAMPAIGN_SETTINGS,
   INITIAL_CAMPAIGN_STATS,
   type CampaignStatus,
-  type CampaignType,
-  type CampaignSettings,
-  type CampaignStats,
 } from '@/lib/campaigns'
 import {
   createCampaignSchema,
@@ -19,26 +16,11 @@ import {
   applyRateLimit,
   addRateLimitHeaders,
 } from '@/lib/rate-limit/middleware'
-
-interface CampaignRecord {
-  id: string
-  organization_id: string
-  name: string
-  status: CampaignStatus
-  type: CampaignType
-  settings: CampaignSettings
-  stats: CampaignStats
-  lead_list_ids: string[]
-  mailbox_ids: string[]
-  schedule_id: string | null
-  created_at: string
-  updated_at: string
-  started_at: string | null
-  paused_at: string | null
-  completed_at: string | null
-}
+import { invalidateCampaignCache } from '@/lib/cache/queries'
+import { getCampaignsWithStats } from '@/lib/db/queries'
 
 // GET /api/campaigns - List campaigns
+// Optimized: Uses aggregated counts in single query instead of N+1
 export async function GET(request: NextRequest) {
   // Apply rate limiting
   const { limited, response, result } = applyRateLimit(request, apiLimiter)
@@ -75,26 +57,12 @@ export async function GET(request: NextRequest) {
       : { page: 1, limit: 20, status: undefined }
 
     const statusFilter = status as CampaignStatus[] | undefined
-    const offset = (page - 1) * limit
 
-    // Build query
-    let query = supabase
-      .from('campaigns')
-      .select('*', { count: 'exact' })
-      .eq('organization_id', userData.organization_id)
-      .order('created_at', { ascending: false })
-
-    if (statusFilter && statusFilter.length > 0) {
-      query = query.in('status', statusFilter)
-    }
-
-    query = query.range(offset, offset + limit - 1)
-
-    const { data: campaigns, error, count } = await query as {
-      data: CampaignRecord[] | null
-      error: Error | null
-      count: number | null
-    }
+    // Use optimized query with aggregated counts
+    const { data: campaigns, error, count } = await getCampaignsWithStats(
+      userData.organization_id,
+      { page, limit, status: statusFilter }
+    )
 
     if (error) {
       console.error('Error fetching campaigns:', error)
@@ -117,6 +85,10 @@ export async function GET(request: NextRequest) {
         startedAt: c.started_at,
         pausedAt: c.paused_at,
         completedAt: c.completed_at,
+        // Include aggregated counts
+        leadsCount: c.leads_count,
+        sentEmailsCount: c.sent_emails_count,
+        repliesCount: c.replies_count,
       })) || [],
       pagination: {
         page,
@@ -203,6 +175,9 @@ export async function POST(request: NextRequest) {
         result
       )
     }
+
+    // Invalidate campaign cache
+    invalidateCampaignCache(userData.organization_id)
 
     // Audit log campaign creation
     const reqMetadata = getRequestMetadata(request)

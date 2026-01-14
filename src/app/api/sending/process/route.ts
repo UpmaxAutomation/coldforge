@@ -16,6 +16,7 @@ import {
   applyRateLimit,
   addRateLimitHeaders,
 } from '@/lib/rate-limit/middleware'
+import { invalidateAnalyticsCache, invalidateDashboardCache } from '@/lib/cache/queries'
 
 interface JobRecord {
   id: string
@@ -410,6 +411,16 @@ export async function POST(request: NextRequest) {
           })
           .eq('id', job.id)
         results.failed++
+      }
+    }
+
+    // Invalidate analytics and dashboard cache if any emails were sent
+    if (results.sent > 0) {
+      // Find unique organization IDs from the processed jobs
+      const orgIds = [...new Set(jobs?.map(j => j.organization_id) || [])]
+      for (const orgId of orgIds) {
+        invalidateAnalyticsCache(orgId)
+        invalidateDashboardCache(orgId)
       }
     }
 

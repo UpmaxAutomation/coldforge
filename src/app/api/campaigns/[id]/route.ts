@@ -7,6 +7,7 @@ import type {
   CampaignStats,
 } from '@/lib/campaigns'
 import { logAuditEventAsync, getRequestMetadata } from '@/lib/audit'
+import { invalidateCampaignCache } from '@/lib/cache/queries'
 
 interface CampaignRecord {
   id: string
@@ -153,6 +154,9 @@ export async function PUT(
       return NextResponse.json({ error: 'Failed to update campaign' }, { status: 500 })
     }
 
+    // Invalidate campaign cache
+    invalidateCampaignCache(profile.organization_id)
+
     // Audit log campaign update
     const reqMetadata = getRequestMetadata(request)
     logAuditEventAsync({
@@ -231,6 +235,9 @@ export async function DELETE(
       console.error('Error deleting campaign:', deleteError)
       return NextResponse.json({ error: 'Failed to delete campaign' }, { status: 500 })
     }
+
+    // Invalidate campaign cache
+    invalidateCampaignCache(profile.organization_id)
 
     // Audit log campaign deletion
     const reqMetadata = getRequestMetadata(request)
