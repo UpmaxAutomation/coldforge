@@ -425,6 +425,42 @@ export const listInboxQuerySchema = paginationSchema.extend({
   unreadOnly: z.coerce.boolean().default(false),
 })
 
+/** List replies query params */
+export const listRepliesQuerySchema = paginationSchema.extend({
+  campaignId: uuidSchema.optional(),
+  mailboxId: uuidSchema.optional(),
+  category: replyCategorySchema.optional(),
+  sentiment: replySentimentSchema.optional(),
+  status: replyStatusSchema.optional(),
+  search: z.string().max(255).optional(),
+})
+
+/** List threads query params */
+export const listThreadsQuerySchema = paginationSchema.extend({
+  status: threadStatusSchema.optional(),
+  category: replyCategorySchema.optional(),
+  campaignId: uuidSchema.optional(),
+  search: z.string().max(255).optional(),
+})
+
+/** Create reply request schema (from webhook/email receive) */
+export const createReplySchema = z.object({
+  organizationId: uuidSchema,
+  campaignId: uuidSchema.nullable().optional(),
+  leadId: uuidSchema.nullable().optional(),
+  mailboxId: uuidSchema,
+  threadId: uuidSchema,
+  messageId: z.string().min(1).max(500),
+  inReplyTo: z.string().max(500).optional(),
+  from: emailSchema,
+  fromName: z.string().max(255).nullable().optional(),
+  to: emailSchema,
+  subject: z.string().max(500),
+  bodyText: z.string().min(1),
+  bodyHtml: z.string().nullable().optional(),
+  receivedAt: timestampSchema,
+})
+
 /** Inbox bulk action schema */
 export const inboxBulkActionSchema = z.object({
   action: z.enum(['mark_read', 'mark_unread', 'archive', 'resolve', 'unarchive']),
@@ -434,6 +470,137 @@ export const inboxBulkActionSchema = z.object({
   data => (data.threadIds?.length ?? 0) > 0 || (data.replyIds?.length ?? 0) > 0,
   { message: 'Thread IDs or Reply IDs are required' }
 )
+
+// ============================================================================
+// Warmup Schemas
+// ============================================================================
+
+/** Warmup action enum */
+export const warmupActionSchema = z.enum(['enable', 'disable', 'update_config'])
+
+/** Warmup config schema */
+export const warmupConfigSchema = z.object({
+  dailyEmailTarget: z.number().int().min(1).max(100).optional(),
+  replyRate: z.number().min(0).max(100).optional(),
+  sendingWindow: z.object({
+    start: z.number().int().min(0).max(23),
+    end: z.number().int().min(0).max(23),
+  }).optional(),
+  enableReplies: z.boolean().optional(),
+  rampUpDays: z.number().int().min(1).max(90).optional(),
+})
+
+/** POST /api/warmup request schema */
+export const warmupActionRequestSchema = z.object({
+  action: warmupActionSchema,
+  mailboxIds: z.array(uuidSchema).optional(),
+  config: warmupConfigSchema.optional(),
+}).refine(
+  data => {
+    // Enable/disable require mailboxIds
+    if (['enable', 'disable'].includes(data.action)) {
+      return data.mailboxIds && data.mailboxIds.length > 0
+    }
+    // update_config requires config
+    if (data.action === 'update_config') {
+      return data.config !== undefined
+    }
+    return true
+  },
+  {
+    message: 'Invalid request: enable/disable require mailboxIds, update_config requires config',
+  }
+)
+
+// ============================================================================
+// Sending Queue Schemas
+// ============================================================================
+
+/** Email job status enum */
+export const emailJobStatusSchema = z.enum([
+  'pending',
+  'scheduled',
+  'sending',
+  'sent',
+  'failed',
+  'cancelled',
+  'bounced',
+])
+
+/** GET /api/sending/queue query params */
+export const sendingQueueQuerySchema = paginationSchema.extend({
+  campaignId: uuidSchema.optional(),
+  status: z.string().transform(val => val.split(',').filter(Boolean)).optional(),
+})
+
+/** POST /api/sending/queue request schema */
+export const createQueueJobsSchema = z.object({
+  campaignId: uuidSchema,
+  leadIds: z.array(uuidSchema).min(1, 'At least one lead ID is required'),
+  sequenceStepId: uuidSchema,
+  variantId: uuidSchema.optional(),
+  scheduledAt: timestampSchema,
+  priority: z.number().int().min(1).max(10).default(5),
+})
+
+/** DELETE /api/sending/queue request schema */
+export const cancelQueueJobsSchema = z.object({
+  jobIds: z.array(uuidSchema).optional(),
+  campaignId: uuidSchema.optional(),
+  cancelAll: z.boolean().default(false),
+}).refine(
+  data => data.jobIds?.length || data.campaignId || data.cancelAll,
+  { message: 'Specify jobIds, campaignId, or cancelAll' }
+)
+
+// ============================================================================
+// Analytics Schemas
+// ============================================================================
+
+/** Analytics period enum */
+export const analyticsPeriodSchema = z.enum(['7d', '30d', '90d'])
+
+/** GET /api/analytics query params */
+export const analyticsQuerySchema = z.object({
+  period: analyticsPeriodSchema.default('30d'),
+  campaignId: uuidSchema.optional(),
+})
+
+/** GET /api/analytics/campaigns query params */
+export const campaignAnalyticsQuerySchema = paginationSchema.extend({
+  period: analyticsPeriodSchema.default('30d'),
+  sortBy: z.enum(['sent', 'open_rate', 'reply_rate', 'click_rate']).default('sent'),
+  sortOrder: z.enum(['asc', 'desc']).default('desc'),
+})
+
+// ============================================================================
+// Deliverability Schemas
+// ============================================================================
+
+/** Deliverability period enum */
+export const deliverabilityPeriodSchema = z.enum(['7d', '30d', '90d'])
+
+/** GET /api/deliverability query params */
+export const deliverabilityQuerySchema = z.object({
+  period: deliverabilityPeriodSchema.default('7d'),
+  campaignId: uuidSchema.optional(),
+})
+
+// ============================================================================
+// Billing Schemas
+// ============================================================================
+
+/** Plan tier enum */
+export const planTierSchema = z.enum(['starter', 'growth', 'scale', 'enterprise'])
+
+/** Billing interval enum */
+export const billingIntervalSchema = z.enum(['month', 'year'])
+
+/** POST /api/billing/checkout request schema */
+export const checkoutRequestSchema = z.object({
+  planTier: planTierSchema,
+  interval: billingIntervalSchema,
+})
 
 // ============================================================================
 // Settings Schemas
@@ -546,10 +713,32 @@ export type ReplySentiment = z.infer<typeof replySentimentSchema>
 export type ReplyStatus = z.infer<typeof replyStatusSchema>
 export type ThreadStatus = z.infer<typeof threadStatusSchema>
 export type InboxBulkAction = z.infer<typeof inboxBulkActionSchema>
+export type ListRepliesQuery = z.infer<typeof listRepliesQuerySchema>
+export type ListThreadsQuery = z.infer<typeof listThreadsQuerySchema>
+export type CreateReplyInput = z.infer<typeof createReplySchema>
 
 export type UserRole = z.infer<typeof userRoleSchema>
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>
 export type ProfileResponse = z.infer<typeof profileResponseSchema>
+
+export type WarmupAction = z.infer<typeof warmupActionSchema>
+export type WarmupConfig = z.infer<typeof warmupConfigSchema>
+export type WarmupActionRequest = z.infer<typeof warmupActionRequestSchema>
+
+export type EmailJobStatus = z.infer<typeof emailJobStatusSchema>
+export type CreateQueueJobsInput = z.infer<typeof createQueueJobsSchema>
+export type CancelQueueJobsInput = z.infer<typeof cancelQueueJobsSchema>
+
+export type AnalyticsPeriod = z.infer<typeof analyticsPeriodSchema>
+export type AnalyticsQuery = z.infer<typeof analyticsQuerySchema>
+export type CampaignAnalyticsQuery = z.infer<typeof campaignAnalyticsQuerySchema>
+
+export type DeliverabilityPeriod = z.infer<typeof deliverabilityPeriodSchema>
+export type DeliverabilityQuery = z.infer<typeof deliverabilityQuerySchema>
+
+export type PlanTier = z.infer<typeof planTierSchema>
+export type BillingInterval = z.infer<typeof billingIntervalSchema>
+export type CheckoutRequest = z.infer<typeof checkoutRequestSchema>
 
 export type ApiError = z.infer<typeof apiErrorSchema>
 export type ApiSuccess = z.infer<typeof apiSuccessSchema>

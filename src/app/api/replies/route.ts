@@ -6,6 +6,8 @@ import {
   type ReplySentiment,
   type ReplyStatus,
 } from '@/lib/replies'
+import { listRepliesQuerySchema, createReplySchema } from '@/lib/schemas'
+import { validateRequest, validateQuery } from '@/lib/validation'
 
 interface ReplyRow {
   id: string
@@ -53,15 +55,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
     }
 
-    const searchParams = request.nextUrl.searchParams
-    const page = parseInt(searchParams.get('page') || '1')
-    const limit = parseInt(searchParams.get('limit') || '50')
-    const campaignId = searchParams.get('campaignId')
-    const mailboxId = searchParams.get('mailboxId')
-    const category = searchParams.get('category') as ReplyCategory | null
-    const sentiment = searchParams.get('sentiment') as ReplySentiment | null
-    const status = searchParams.get('status') as ReplyStatus | null
-    const search = searchParams.get('search')
+    // Validate query parameters
+    const queryValidation = validateQuery(request, listRepliesQuerySchema)
+    if (!queryValidation.success) return queryValidation.error
+
+    const { page, limit, campaignId, mailboxId, category, sentiment, status, search } = queryValidation.data
 
     // Build query
     let query = supabase
@@ -170,7 +168,10 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const body = await request.json()
+
+    // Validate request body
+    const validation = await validateRequest(request, createReplySchema)
+    if (!validation.success) return validation.error
 
     const {
       organizationId,
@@ -187,7 +188,7 @@ export async function POST(request: NextRequest) {
       bodyText,
       bodyHtml,
       receivedAt,
-    } = body
+    } = validation.data
 
     // Auto-categorize the reply
     const categorization = autoCategorize(subject, bodyText)

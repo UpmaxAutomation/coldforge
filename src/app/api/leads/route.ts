@@ -4,9 +4,19 @@ import {
   createLeadSchema,
   listLeadsQuerySchema,
 } from '@/lib/schemas'
+import {
+  apiLimiter,
+  writeLimiter,
+  applyRateLimit,
+  addRateLimitHeaders,
+} from '@/lib/rate-limit/middleware'
 
 // GET /api/leads - List all leads
 export async function GET(request: NextRequest) {
+  // Apply rate limiting
+  const { limited, response, result } = applyRateLimit(request, apiLimiter)
+  if (limited) return response!
+
   try {
     const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -58,7 +68,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch leads' }, { status: 500 })
     }
 
-    return NextResponse.json({
+    const jsonResponse = NextResponse.json({
       leads,
       pagination: {
         page,
@@ -67,6 +77,7 @@ export async function GET(request: NextRequest) {
         totalPages: Math.ceil((count || 0) / limit),
       },
     })
+    return addRateLimitHeaders(jsonResponse, result)
   } catch (error) {
     console.error('Error in GET /api/leads:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -75,6 +86,10 @@ export async function GET(request: NextRequest) {
 
 // POST /api/leads - Create a new lead
 export async function POST(request: NextRequest) {
+  // Apply stricter rate limiting for write operations
+  const { limited, response, result } = applyRateLimit(request, writeLimiter)
+  if (limited) return response!
+
   try {
     const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -127,7 +142,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create lead' }, { status: 500 })
     }
 
-    return NextResponse.json({ lead }, { status: 201 })
+    const jsonResponse = NextResponse.json({ lead }, { status: 201 })
+    return addRateLimitHeaders(jsonResponse, result)
   } catch (error) {
     console.error('Error in POST /api/leads:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

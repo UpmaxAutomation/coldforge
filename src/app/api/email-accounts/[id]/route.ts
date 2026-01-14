@@ -5,6 +5,7 @@ import { testSmtpConnection, SmtpConfig } from '@/lib/smtp'
 import { testImapConnection, ImapConfig } from '@/lib/imap'
 import { testGoogleConnection } from '@/lib/google'
 import { testMicrosoftConnection } from '@/lib/microsoft'
+import { logAuditEventAsync, getRequestMetadata } from '@/lib/audit'
 
 interface RouteContext {
   params: Promise<{ id: string }>
@@ -146,7 +147,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 }
 
 // DELETE /api/email-accounts/[id] - Delete an email account
-export async function DELETE(_request: NextRequest, context: RouteContext) {
+export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params
     const supabase = await createClient()
@@ -156,6 +157,13 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Get user's organization for audit log
+    const { data: profile } = await supabase
+      .from('users')
+      .select('organization_id')
+      .eq('id', user.id)
+      .single() as { data: { organization_id: string } | null }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error } = await (supabase.from('email_accounts') as any)
       .delete()
@@ -164,6 +172,17 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
     if (error) {
       throw error
     }
+
+    // Audit log email account deletion
+    const reqMetadata = getRequestMetadata(request)
+    logAuditEventAsync({
+      user_id: user.id,
+      organization_id: profile?.organization_id,
+      action: 'delete',
+      resource_type: 'email_account',
+      resource_id: id,
+      ...reqMetadata
+    })
 
     return NextResponse.json({ success: true })
   } catch (error) {

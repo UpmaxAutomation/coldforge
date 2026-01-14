@@ -5,6 +5,12 @@ import {
   type EmailJob,
   type EmailJobStatus,
 } from '@/lib/sending'
+import {
+  sendingQueueQuerySchema,
+  createQueueJobsSchema,
+  cancelQueueJobsSchema,
+} from '@/lib/schemas'
+import { validateRequest, validateQuery } from '@/lib/validation'
 
 interface EmailJobRecord {
   id: string
@@ -48,11 +54,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
     }
 
-    const searchParams = request.nextUrl.searchParams
-    const campaignId = searchParams.get('campaignId')
-    const status = searchParams.get('status')?.split(',') as EmailJobStatus[] | undefined
-    const page = parseInt(searchParams.get('page') || '1')
-    const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 100)
+    // Validate query parameters
+    const queryValidation = validateQuery(request, sendingQueueQuerySchema)
+    if (!queryValidation.success) return queryValidation.error
+
+    const { campaignId, status, page, limit } = queryValidation.data
     const offset = (page - 1) * limit
 
     // Build query
@@ -144,12 +150,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const body = await request.json()
-    const { campaignId, leadIds, sequenceStepId, variantId, scheduledAt, priority = 5 } = body
+    // Validate request body
+    const validation = await validateRequest(request, createQueueJobsSchema)
+    if (!validation.success) return validation.error
 
-    if (!campaignId || !leadIds || !Array.isArray(leadIds) || !sequenceStepId) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
-    }
+    const { campaignId, leadIds, sequenceStepId, variantId, scheduledAt, priority } = validation.data
 
     // Get user's organization
     const { data: profile } = await supabase
@@ -222,8 +227,11 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const body = await request.json()
-    const { jobIds, campaignId, cancelAll = false } = body
+    // Validate request body
+    const validation = await validateRequest(request, cancelQueueJobsSchema)
+    if (!validation.success) return validation.error
+
+    const { jobIds, campaignId, cancelAll: _cancelAll } = validation.data
 
     // Get user's organization
     const { data: profile } = await supabase
@@ -245,13 +253,12 @@ export async function DELETE(request: NextRequest) {
       .eq('organization_id', profile.organization_id)
       .in('status', ['pending', 'scheduled']) // Only cancel pending/scheduled
 
-    if (jobIds && Array.isArray(jobIds)) {
+    if (jobIds && jobIds.length > 0) {
       query = query.in('id', jobIds)
     } else if (campaignId) {
       query = query.eq('campaign_id', campaignId)
-    } else if (!cancelAll) {
-      return NextResponse.json({ error: 'Specify jobIds, campaignId, or cancelAll' }, { status: 400 })
     }
+    // If cancelAll is true and no specific jobIds/campaignId, all pending jobs will be cancelled
 
     const { error: updateError, count } = await query
 

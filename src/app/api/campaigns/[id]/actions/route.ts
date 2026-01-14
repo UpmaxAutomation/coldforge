@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import type { CampaignStatus } from '@/lib/campaigns'
+import { logAuditEventAsync, getRequestMetadata, AuditAction } from '@/lib/audit'
 
 // POST /api/campaigns/[id]/actions - Campaign actions (start, pause, resume, complete)
 export async function POST(
@@ -237,6 +238,27 @@ export async function POST(
       console.error('Error updating campaign status:', updateError)
       return NextResponse.json({ error: 'Failed to update campaign' }, { status: 500 })
     }
+
+    // Map action to audit action
+    const actionToAuditAction: Record<string, AuditAction> = {
+      'start': 'campaign_start',
+      'pause': 'campaign_pause',
+      'resume': 'campaign_start',
+      'complete': 'update',
+      'archive': 'update',
+    }
+
+    // Audit log campaign action
+    const reqMetadata = getRequestMetadata(request)
+    logAuditEventAsync({
+      user_id: user.id,
+      organization_id: profile.organization_id,
+      action: actionToAuditAction[action] || 'update',
+      resource_type: 'campaign',
+      resource_id: campaignId,
+      details: { action, previousStatus: campaign.status, newStatus: newStatus! },
+      ...reqMetadata
+    })
 
     return NextResponse.json({
       success: true,

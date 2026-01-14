@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import type { Json } from '@/types/database'
+import { logAuditEventAsync, getRequestMetadata } from '@/lib/audit'
 
 // Type definitions
 interface UserProfile {
@@ -169,6 +170,18 @@ export async function PATCH(request: NextRequest) {
     if (error) {
       throw error
     }
+
+    // Audit log organization settings change
+    const reqMetadata = getRequestMetadata(request)
+    logAuditEventAsync({
+      user_id: user.id,
+      organization_id: profile.organization_id ?? undefined,
+      action: 'settings_change',
+      resource_type: 'organization',
+      resource_id: profile.organization_id ?? undefined,
+      details: { changes: Object.keys(body) },
+      ...reqMetadata
+    })
 
     const orgSettings = (organization?.settings as Record<string, unknown>) || {}
 

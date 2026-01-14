@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import type { Json } from '@/types/database'
+import { updateProfileSchema } from '@/lib/schemas'
+import { validateRequest } from '@/lib/validation'
 
 // Profile response type
 interface UserProfile {
@@ -91,8 +93,11 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const body = await request.json()
-    const { full_name, timezone, avatar_url } = body
+    // Validate request body
+    const validation = await validateRequest(request, updateProfileSchema)
+    if (!validation.success) return validation.error
+
+    const { full_name, timezone, avatar_url } = validation.data
 
     // Get current settings
     const { data: currentProfile } = await supabase

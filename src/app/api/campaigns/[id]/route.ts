@@ -6,6 +6,7 @@ import type {
   CampaignSettings,
   CampaignStats,
 } from '@/lib/campaigns'
+import { logAuditEventAsync, getRequestMetadata } from '@/lib/audit'
 
 interface CampaignRecord {
   id: string
@@ -152,6 +153,18 @@ export async function PUT(
       return NextResponse.json({ error: 'Failed to update campaign' }, { status: 500 })
     }
 
+    // Audit log campaign update
+    const reqMetadata = getRequestMetadata(request)
+    logAuditEventAsync({
+      user_id: user.id,
+      organization_id: profile.organization_id,
+      action: 'update',
+      resource_type: 'campaign',
+      resource_id: id,
+      details: { updates: Object.keys(body) },
+      ...reqMetadata
+    })
+
     return NextResponse.json({ campaign })
   } catch (error) {
     console.error('Campaign PUT error:', error)
@@ -164,7 +177,7 @@ export async function PUT(
 
 // DELETE /api/campaigns/[id] - Delete campaign
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -218,6 +231,17 @@ export async function DELETE(
       console.error('Error deleting campaign:', deleteError)
       return NextResponse.json({ error: 'Failed to delete campaign' }, { status: 500 })
     }
+
+    // Audit log campaign deletion
+    const reqMetadata = getRequestMetadata(request)
+    logAuditEventAsync({
+      user_id: user.id,
+      organization_id: profile.organization_id,
+      action: 'campaign_delete',
+      resource_type: 'campaign',
+      resource_id: id,
+      ...reqMetadata
+    })
 
     return NextResponse.json({ success: true })
   } catch (error) {

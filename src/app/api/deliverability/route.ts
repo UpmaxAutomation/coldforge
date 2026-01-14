@@ -6,6 +6,8 @@ import {
   type EmailEventType,
   type MailboxHealth,
 } from '@/lib/deliverability'
+import { deliverabilityQuerySchema } from '@/lib/schemas'
+import { validateQuery } from '@/lib/validation'
 
 interface EventCount {
   event_type: EmailEventType
@@ -34,9 +36,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
     }
 
-    const searchParams = request.nextUrl.searchParams
-    const campaignId = searchParams.get('campaignId')
-    const period = searchParams.get('period') || '7d' // 7d, 30d, 90d
+    // Validate query parameters
+    const queryValidation = validateQuery(request, deliverabilityQuerySchema)
+    if (!queryValidation.success) return queryValidation.error
+
+    const { period, campaignId } = queryValidation.data
 
     // Calculate date range
     const now = new Date()

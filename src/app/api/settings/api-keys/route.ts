@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { randomBytes, createHash } from 'crypto'
 import type { Json } from '@/types/database'
+import { logAuditEventAsync, getRequestMetadata } from '@/lib/audit'
 
 // API Key type stored in user settings
 interface ApiKeyData {
@@ -141,6 +142,18 @@ export async function POST(request: NextRequest) {
       throw error
     }
 
+    // Audit log API key creation
+    const reqMetadata = getRequestMetadata(request)
+    logAuditEventAsync({
+      user_id: user.id,
+      organization_id: profile.organization_id ?? undefined,
+      action: 'api_key_create',
+      resource_type: 'api_key',
+      resource_id: newApiKey.id,
+      details: { name: newApiKey.name },
+      ...reqMetadata
+    })
+
     // Return the full key (only time it's visible)
     return NextResponse.json({
       api_key: {
@@ -214,6 +227,17 @@ export async function DELETE(request: NextRequest) {
     if (error) {
       throw error
     }
+
+    // Audit log API key revocation
+    const reqMetadata = getRequestMetadata(request)
+    logAuditEventAsync({
+      user_id: user.id,
+      organization_id: profile.organization_id ?? undefined,
+      action: 'api_key_revoke',
+      resource_type: 'api_key',
+      resource_id: keyId,
+      ...reqMetadata
+    })
 
     return NextResponse.json({ success: true })
   } catch (error) {

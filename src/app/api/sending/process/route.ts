@@ -11,6 +11,11 @@ import {
   DEFAULT_SCHEDULE_WINDOWS,
 } from '@/lib/sending'
 import { processTemplate } from '@/lib/campaigns'
+import {
+  sendingLimiter,
+  applyRateLimit,
+  addRateLimitHeaders,
+} from '@/lib/rate-limit/middleware'
 
 interface JobRecord {
   id: string
@@ -29,6 +34,10 @@ interface JobRecord {
 
 // POST /api/sending/process - Process pending email jobs (called by cron/worker)
 export async function POST(request: NextRequest) {
+  // Apply rate limiting for sending operations (1000/hour)
+  const { limited, response, result } = applyRateLimit(request, sendingLimiter)
+  if (limited) return response!
+
   try {
     // Verify internal API key for cron jobs
     const authHeader = request.headers.get('authorization')
@@ -404,7 +413,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json(results)
+    const jsonResponse = NextResponse.json(results)
+    return addRateLimitHeaders(jsonResponse, result)
   } catch (error) {
     console.error('Sending process error:', error)
     return NextResponse.json(

@@ -6,6 +6,8 @@ import {
   type BillingInterval,
   type PlanTier,
 } from '@/lib/billing'
+import { checkoutRequestSchema } from '@/lib/schemas'
+import { validateRequest } from '@/lib/validation'
 
 // POST /api/billing/checkout - Create checkout session
 export async function POST(request: NextRequest) {
@@ -35,17 +37,13 @@ export async function POST(request: NextRequest) {
       .eq('id', profile.organization_id)
       .single() as { data: { name: string } | null }
 
-    const body = await request.json()
-    const { planTier, interval } = body as {
+    // Validate request body
+    const validation = await validateRequest(request, checkoutRequestSchema)
+    if (!validation.success) return validation.error
+
+    const { planTier, interval } = validation.data as unknown as {
       planTier: PlanTier
       interval: BillingInterval
-    }
-
-    if (!planTier || !interval) {
-      return NextResponse.json(
-        { error: 'Plan tier and interval are required' },
-        { status: 400 }
-      )
     }
 
     // Get or create Stripe customer

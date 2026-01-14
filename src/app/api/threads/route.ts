@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { type ReplyCategory, type ReplySentiment } from '@/lib/replies'
+import { listThreadsQuerySchema } from '@/lib/schemas'
+import { validateQuery } from '@/lib/validation'
 
 interface ThreadRow {
   id: string
@@ -42,13 +44,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
     }
 
-    const searchParams = request.nextUrl.searchParams
-    const page = parseInt(searchParams.get('page') || '1')
-    const limit = parseInt(searchParams.get('limit') || '50')
-    const status = searchParams.get('status') as 'active' | 'resolved' | 'archived' | null
-    const category = searchParams.get('category') as ReplyCategory | null
-    const campaignId = searchParams.get('campaignId')
-    const search = searchParams.get('search')
+    // Validate query parameters
+    const queryValidation = validateQuery(request, listThreadsQuerySchema)
+    if (!queryValidation.success) return queryValidation.error
+
+    const { page, limit, status, category, campaignId, search } = queryValidation.data
 
     // Build query
     let query = supabase

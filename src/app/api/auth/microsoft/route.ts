@@ -1,10 +1,19 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getMicrosoftAuthUrl } from '@/lib/microsoft'
 import { randomBytes } from 'crypto'
+import {
+  authLimiter,
+  applyRateLimit,
+  addRateLimitHeaders,
+} from '@/lib/rate-limit/middleware'
 
 // GET /api/auth/microsoft - Initiate Microsoft OAuth flow
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // Apply strict rate limiting for auth routes (5 requests per 15 minutes)
+  const { limited, response, result } = applyRateLimit(request, authLimiter)
+  if (limited) return response!
+
   try {
     const supabase = await createClient()
 
@@ -25,7 +34,8 @@ export async function GET() {
 
     const authUrl = getMicrosoftAuthUrl(stateData)
 
-    return NextResponse.json({ authUrl })
+    const jsonResponse = NextResponse.json({ authUrl })
+    return addRateLimitHeaders(jsonResponse, result)
   } catch (error) {
     console.error('Failed to initiate Microsoft OAuth:', error)
     return NextResponse.json(

@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { encryptObject } from '@/lib/encryption'
+import { logAuditEventAsync, getRequestMetadata } from '@/lib/audit'
+import {
+  apiLimiter,
+  writeLimiter,
+  applyRateLimit,
+  addRateLimitHeaders,
+} from '@/lib/rate-limit/middleware'
+import { createEmailAccountSchema } from '@/lib/schemas'
+import { validateRequest } from '@/lib/validation'
 
 // Type for email account response
 interface EmailAccountResponse {
@@ -17,7 +26,11 @@ interface EmailAccountResponse {
 }
 
 // GET /api/email-accounts - List all email accounts for the org
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // Apply rate limiting
+  const { limited, response, result } = applyRateLimit(request, apiLimiter)
+  if (limited) return response!
+
   try {
     const supabase = await createClient()
 
@@ -54,7 +67,8 @@ export async function GET() {
       is_active: account.status === 'active',
     }))
 
-    return NextResponse.json({ accounts: transformedAccounts })
+    const jsonResponse = NextResponse.json({ accounts: transformedAccounts })
+    return addRateLimitHeaders(jsonResponse, result)
   } catch (error) {
     console.error('Failed to fetch email accounts:', error)
     return NextResponse.json(
@@ -66,6 +80,10 @@ export async function GET() {
 
 // POST /api/email-accounts - Create a new email account
 export async function POST(request: NextRequest) {
+  // Apply stricter rate limiting for write operations
+  const { limited, response, result } = applyRateLimit(request, writeLimiter)
+  if (limited) return response!
+
   try {
     const supabase = await createClient()
 
@@ -85,7 +103,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No organization found' }, { status: 400 })
     }
 
-    const body = await request.json()
+    // Validate request body with Zod schema
+    const validation = await validateRequest(request, createEmailAccountSchema)
+    if (!validation.success) return validation.error
+
     const {
       email,
       provider,
@@ -97,16 +118,8 @@ export async function POST(request: NextRequest) {
       imap_host,
       imap_port,
       oauth_tokens,
-      daily_limit = 50,
-    } = body
-
-    // Validate required fields
-    if (!email || !provider) {
-      return NextResponse.json(
-        { error: 'Email and provider are required' },
-        { status: 400 }
-      )
-    }
+      daily_limit,
+    } = validation.data
 
     // Build insert data
     const insertData: Record<string, unknown> = {
@@ -121,12 +134,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (provider === 'smtp') {
-      if (!smtp_host || !smtp_port || !smtp_user || !smtp_password) {
-        return NextResponse.json(
-          { error: 'SMTP configuration is required for SMTP provider' },
-          { status: 400 }
-        )
-      }
+      // SMTP fields are validated by the schema's refine check
 
       insertData.smtp_host = smtp_host
       insertData.smtp_port = smtp_port
@@ -162,12 +170,27 @@ export async function POST(request: NextRequest) {
       throw error
     }
 
-    return NextResponse.json({
+    // Audit log email account creation
+    if (account) {
+      const reqMetadata = getRequestMetadata(request)
+      logAuditEventAsync({
+        user_id: user.id,
+        organization_id: profile.organization_id,
+        action: 'create',
+        resource_type: 'email_account',
+        resource_id: account.id,
+        details: { email: account.email, provider: account.provider },
+        ...reqMetadata
+      })
+    }
+
+    const jsonResponse = NextResponse.json({
       account: account ? {
         ...account,
         is_active: account.status === 'active',
       } : null
     }, { status: 201 })
+    return addRateLimitHeaders(jsonResponse, result)
   } catch (error) {
     console.error('Failed to create email account:', error)
     return NextResponse.json(

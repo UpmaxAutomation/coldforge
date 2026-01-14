@@ -12,6 +12,13 @@ import {
   createCampaignSchema,
   listCampaignsQuerySchema,
 } from '@/lib/schemas'
+import { logAuditEventAsync, getRequestMetadata } from '@/lib/audit'
+import {
+  apiLimiter,
+  writeLimiter,
+  applyRateLimit,
+  addRateLimitHeaders,
+} from '@/lib/rate-limit/middleware'
 
 interface CampaignRecord {
   id: string
@@ -33,6 +40,10 @@ interface CampaignRecord {
 
 // GET /api/campaigns - List campaigns
 export async function GET(request: NextRequest) {
+  // Apply rate limiting
+  const { limited, response, result } = applyRateLimit(request, apiLimiter)
+  if (limited) return response!
+
   try {
     const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -90,7 +101,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch campaigns' }, { status: 500 })
     }
 
-    return NextResponse.json({
+    const jsonResponse = NextResponse.json({
       campaigns: campaigns?.map(c => ({
         id: c.id,
         name: c.name,
@@ -114,6 +125,7 @@ export async function GET(request: NextRequest) {
         totalPages: count ? Math.ceil(count / limit) : 0,
       },
     })
+    return addRateLimitHeaders(jsonResponse, result)
   } catch (error) {
     console.error('Campaigns API error:', error)
     return NextResponse.json(
@@ -125,12 +137,19 @@ export async function GET(request: NextRequest) {
 
 // POST /api/campaigns - Create campaign
 export async function POST(request: NextRequest) {
+  // Apply stricter rate limiting for write operations
+  const { limited, response, result } = applyRateLimit(request, writeLimiter)
+  if (limited) return response!
+
   try {
     const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return addRateLimitHeaders(
+        NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
+        result
+      )
     }
 
     const body = await request.json()
@@ -139,7 +158,10 @@ export async function POST(request: NextRequest) {
     const validationResult = createCampaignSchema.safeParse(body)
     if (!validationResult.success) {
       const errorMessage = validationResult.error.issues[0]?.message || 'Invalid request body'
-      return NextResponse.json({ error: errorMessage }, { status: 400 })
+      return addRateLimitHeaders(
+        NextResponse.json({ error: errorMessage }, { status: 400 }),
+        result
+      )
     }
 
     const { name, type, settings, leadListIds, mailboxIds } = validationResult.data
@@ -152,7 +174,10 @@ export async function POST(request: NextRequest) {
       .single() as { data: { organization_id: string } | null }
 
     if (!userData?.organization_id) {
-      return NextResponse.json({ error: 'No organization found' }, { status: 400 })
+      return addRateLimitHeaders(
+        NextResponse.json({ error: 'No organization found' }, { status: 400 }),
+        result
+      )
     }
 
     // Create campaign
@@ -173,23 +198,41 @@ export async function POST(request: NextRequest) {
 
     if (createError) {
       console.error('Error creating campaign:', createError)
-      return NextResponse.json({ error: 'Failed to create campaign' }, { status: 500 })
+      return addRateLimitHeaders(
+        NextResponse.json({ error: 'Failed to create campaign' }, { status: 500 }),
+        result
+      )
     }
 
-    return NextResponse.json({
-      campaign: {
-        id: campaign.id,
-        name: campaign.name,
-        status: campaign.status,
-        type: campaign.type,
-        settings: campaign.settings,
-        stats: campaign.stats,
-        leadListIds: campaign.lead_list_ids,
-        mailboxIds: campaign.mailbox_ids,
-        createdAt: campaign.created_at,
-        updatedAt: campaign.updated_at,
-      },
-    }, { status: 201 })
+    // Audit log campaign creation
+    const reqMetadata = getRequestMetadata(request)
+    logAuditEventAsync({
+      user_id: user.id,
+      organization_id: userData.organization_id,
+      action: 'create',
+      resource_type: 'campaign',
+      resource_id: campaign.id,
+      details: { name: campaign.name, type: campaign.type },
+      ...reqMetadata
+    })
+
+    return addRateLimitHeaders(
+      NextResponse.json({
+        campaign: {
+          id: campaign.id,
+          name: campaign.name,
+          status: campaign.status,
+          type: campaign.type,
+          settings: campaign.settings,
+          stats: campaign.stats,
+          leadListIds: campaign.lead_list_ids,
+          mailboxIds: campaign.mailbox_ids,
+          createdAt: campaign.created_at,
+          updatedAt: campaign.updated_at,
+        },
+      }, { status: 201 }),
+      result
+    )
   } catch (error) {
     console.error('Campaign create error:', error)
     return NextResponse.json(

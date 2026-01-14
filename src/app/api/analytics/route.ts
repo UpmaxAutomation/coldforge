@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import type { Tables } from '@/types/database'
+import { analyticsQuerySchema } from '@/lib/schemas'
+import { validateQuery } from '@/lib/validation'
 
 type SentEmail = Tables<'sent_emails'>
 type Reply = Tables<'replies'>
@@ -57,9 +59,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'No organization found' }, { status: 400 })
     }
 
-    const searchParams = request.nextUrl.searchParams
-    const period = searchParams.get('period') || '30d'
-    const campaignId = searchParams.get('campaignId')
+    // Validate query parameters
+    const queryValidation = validateQuery(request, analyticsQuerySchema)
+    if (!queryValidation.success) return queryValidation.error
+
+    const { period, campaignId } = queryValidation.data
 
     // Calculate date range
     const now = new Date()

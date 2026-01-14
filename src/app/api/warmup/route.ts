@@ -6,6 +6,8 @@ import {
   type WarmupStats,
   type WarmupMailbox,
 } from '@/lib/warmup'
+import { warmupActionRequestSchema } from '@/lib/schemas'
+import { validateRequest } from '@/lib/validation'
 
 interface MailboxRecord {
   id: string
@@ -128,8 +130,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const body = await request.json()
-    const { action, mailboxIds, config } = body
+    // Validate request body
+    const validation = await validateRequest(request, warmupActionRequestSchema)
+    if (!validation.success) return validation.error
+
+    const { action, mailboxIds, config } = validation.data
 
     // Get user's organization
     const { data: profile } = await supabase
@@ -144,9 +149,11 @@ export async function POST(request: NextRequest) {
 
     switch (action) {
       case 'enable': {
-        if (!mailboxIds || !Array.isArray(mailboxIds)) {
+        if (!mailboxIds || !Array.isArray(mailboxIds) || mailboxIds.length === 0) {
           return NextResponse.json({ error: 'Mailbox IDs required' }, { status: 400 })
         }
+
+        const idsToEnable = mailboxIds as string[]
 
         // Enable warmup for specified mailboxes
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -157,7 +164,7 @@ export async function POST(request: NextRequest) {
             warmup_days_in_stage: 0,
             updated_at: new Date().toISOString(),
           })
-          .in('id', mailboxIds)
+          .in('id', idsToEnable)
 
         if (error) {
           console.error('Error enabling warmup:', error)
@@ -166,7 +173,7 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json({
           success: true,
-          message: `Warmup enabled for ${mailboxIds.length} mailboxes`,
+          message: `Warmup enabled for ${idsToEnable.length} mailboxes`,
         })
       }
 
@@ -175,6 +182,8 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: 'Mailbox IDs required' }, { status: 400 })
         }
 
+        const idsToDisable = mailboxIds as string[]
+
         // Disable warmup for specified mailboxes
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { error } = await (supabase.from('mailboxes') as any)
@@ -182,7 +191,7 @@ export async function POST(request: NextRequest) {
             warmup_enabled: false,
             updated_at: new Date().toISOString(),
           })
-          .in('id', mailboxIds)
+          .in('id', idsToDisable)
 
         if (error) {
           console.error('Error disabling warmup:', error)
@@ -191,7 +200,7 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json({
           success: true,
-          message: `Warmup disabled for ${mailboxIds.length} mailboxes`,
+          message: `Warmup disabled for ${idsToDisable.length} mailboxes`,
         })
       }
 
