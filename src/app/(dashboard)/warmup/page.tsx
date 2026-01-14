@@ -1,60 +1,42 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Flame } from 'lucide-react'
+import { Suspense } from 'react'
+import WarmupContent from './warmup-content'
+import { Card, CardContent } from '@/components/ui/card'
+import { RefreshCw } from 'lucide-react'
 
-export default function WarmupPage() {
+function WarmupLoading() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Warmup</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Email Warmup</h1>
         <p className="text-muted-foreground">
-          Warm up your email accounts to improve deliverability
+          Warm up your email accounts to improve deliverability and sender reputation
         </p>
       </div>
-
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Accounts Warming</CardTitle>
-            <Flame className="h-4 w-4 text-orange-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">0</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Warmup Emails Today</CardTitle>
-            <Flame className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">0</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Avg Reply Rate</CardTitle>
-            <Flame className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">0%</div>
-          </CardContent>
-        </Card>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {[1, 2, 3, 4].map((i) => (
+          <Card key={i} className="animate-pulse">
+            <CardContent className="py-6">
+              <div className="h-4 w-24 bg-muted rounded mb-2" />
+              <div className="h-8 w-16 bg-muted rounded" />
+            </CardContent>
+          </Card>
+        ))}
       </div>
-
       <Card>
-        <CardHeader>
-          <CardTitle>No accounts warming up</CardTitle>
-          <CardDescription>
-            Enable warmup on your email accounts to gradually increase their sending reputation
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            The warmup system sends emails between your accounts and engages with them
-            (opens, clicks, replies) to build sender reputation.
-          </p>
+        <CardContent className="py-10">
+          <div className="flex items-center justify-center">
+            <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function WarmupPage() {
+  return (
+    <Suspense fallback={<WarmupLoading />}>
+      <WarmupContent />
+    </Suspense>
   )
 }

@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { User } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -12,8 +12,20 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuGroup,
 } from '@/components/ui/dropdown-menu'
-import { LogOut, Settings, User as UserIcon } from 'lucide-react'
+import {
+  LogOut,
+  Settings,
+  User as UserIcon,
+  CreditCard,
+  HelpCircle,
+  Moon,
+  Sun,
+  ChevronDown,
+  Sparkles,
+} from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 interface UserNavProps {
   user: User
@@ -37,38 +49,128 @@ export function UserNav({ user }: UserNavProps) {
         .toUpperCase()
     : user.email?.[0].toUpperCase() || '?'
 
+  const displayName = user.user_metadata?.full_name || 'User'
+  const email = user.email || ''
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="relative h-9 w-9 rounded-full">
-          <Avatar className="h-9 w-9">
-            <AvatarFallback>{initials}</AvatarFallback>
-          </Avatar>
+        <Button
+          variant="ghost"
+          className="relative h-9 gap-2 rounded-full pl-1 pr-2 hover:bg-accent"
+        >
+          {/* Avatar with status indicator */}
+          <div className="relative">
+            <Avatar className="h-7 w-7 border border-border">
+              <AvatarImage
+                src={user.user_metadata?.avatar_url}
+                alt={displayName}
+              />
+              <AvatarFallback className="bg-primary/10 text-primary text-xs font-medium">
+                {initials}
+              </AvatarFallback>
+            </Avatar>
+            {/* Online status dot */}
+            <span className="absolute bottom-0 right-0 h-2 w-2 rounded-full border-2 border-background bg-emerald-500" />
+          </div>
+
+          {/* Name (hidden on mobile) */}
+          <span className="hidden text-sm font-medium md:inline-block">
+            {displayName.split(' ')[0]}
+          </span>
+
+          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-56" align="end" forceMount>
-        <DropdownMenuLabel className="font-normal">
-          <div className="flex flex-col space-y-1">
-            <p className="text-sm font-medium leading-none">
-              {user.user_metadata?.full_name || 'User'}
-            </p>
-            <p className="text-xs leading-none text-muted-foreground">
-              {user.email}
-            </p>
+
+      <DropdownMenuContent className="w-64" align="end" forceMount>
+        {/* User info header */}
+        <DropdownMenuLabel className="font-normal p-4">
+          <div className="flex items-center gap-3">
+            <Avatar className="h-10 w-10 border border-border">
+              <AvatarImage
+                src={user.user_metadata?.avatar_url}
+                alt={displayName}
+              />
+              <AvatarFallback className="bg-primary/10 text-primary font-medium">
+                {initials}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex flex-col space-y-0.5">
+              <p className="text-sm font-semibold leading-none">{displayName}</p>
+              <p className="text-xs leading-none text-muted-foreground truncate max-w-[160px]">
+                {email}
+              </p>
+            </div>
           </div>
         </DropdownMenuLabel>
+
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => router.push('/settings')}>
-          <UserIcon className="mr-2 h-4 w-4" />
-          <span>Profile</span>
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => router.push('/settings')}>
-          <Settings className="mr-2 h-4 w-4" />
-          <span>Settings</span>
-        </DropdownMenuItem>
+
+        {/* Quick stats */}
+        <div className="p-2">
+          <div className="flex items-center justify-between rounded-lg bg-muted/50 p-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-primary" />
+              <span className="text-xs font-medium">Free Plan</span>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs text-primary hover:text-primary hover:bg-primary/10"
+              onClick={() => router.push('/settings/billing')}
+            >
+              Upgrade
+            </Button>
+          </div>
+        </div>
+
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={handleSignOut}>
-          <LogOut className="mr-2 h-4 w-4" />
+
+        {/* Menu items */}
+        <DropdownMenuGroup>
+          <DropdownMenuItem
+            onClick={() => router.push('/settings/profile')}
+            className="cursor-pointer gap-2 py-2.5"
+          >
+            <UserIcon className="h-4 w-4 text-muted-foreground" />
+            <span>Profile</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => router.push('/settings')}
+            className="cursor-pointer gap-2 py-2.5"
+          >
+            <Settings className="h-4 w-4 text-muted-foreground" />
+            <span>Settings</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => router.push('/settings/billing')}
+            className="cursor-pointer gap-2 py-2.5"
+          >
+            <CreditCard className="h-4 w-4 text-muted-foreground" />
+            <span>Billing</span>
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+
+        <DropdownMenuSeparator />
+
+        <DropdownMenuGroup>
+          <DropdownMenuItem
+            onClick={() => router.push('/help')}
+            className="cursor-pointer gap-2 py-2.5"
+          >
+            <HelpCircle className="h-4 w-4 text-muted-foreground" />
+            <span>Help & Support</span>
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+
+        <DropdownMenuSeparator />
+
+        <DropdownMenuItem
+          onClick={handleSignOut}
+          className="cursor-pointer gap-2 py-2.5 text-red-500 focus:text-red-500 focus:bg-red-500/10"
+        >
+          <LogOut className="h-4 w-4" />
           <span>Log out</span>
         </DropdownMenuItem>
       </DropdownMenuContent>

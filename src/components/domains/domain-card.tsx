@@ -15,8 +15,10 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
-import { Globe, CheckCircle, XCircle, AlertTriangle, RefreshCw, Trash2, ExternalLink, Settings } from 'lucide-react'
+import { Globe, CheckCircle, XCircle, AlertTriangle, RefreshCw, Trash2, ExternalLink, Settings, BookOpen } from 'lucide-react'
 import { DnsConfigModal } from './dns-config-modal'
+import { DnsSetupGuide } from './dns-setup-guide'
+import { Progress } from '@/components/ui/progress'
 
 interface Domain {
   id: string
@@ -28,6 +30,7 @@ interface Domain {
   dmarc_configured: boolean
   bimi_configured: boolean
   health_status: 'healthy' | 'warning' | 'error' | 'pending'
+  health_score?: number
   last_health_check: string | null
   auto_purchased: boolean
   expires_at: string | null
@@ -43,6 +46,7 @@ export function DomainCard({ domain, onRefresh, onDelete }: DomainCardProps) {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [showDnsConfig, setShowDnsConfig] = useState(false)
+  const [showSetupGuide, setShowSetupGuide] = useState(false)
 
   const handleRefresh = async () => {
     setIsRefreshing(true)
@@ -133,7 +137,15 @@ export function DomainCard({ domain, onRefresh, onDelete }: DomainCardProps) {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowSetupGuide(true)}
+              title="DNS Setup Guide"
+            >
+              <BookOpen className="h-4 w-4" />
+            </Button>
             <Button
               variant="ghost"
               size="icon"
@@ -147,6 +159,7 @@ export function DomainCard({ domain, onRefresh, onDelete }: DomainCardProps) {
               size="icon"
               onClick={handleRefresh}
               disabled={isRefreshing}
+              title="Verify DNS"
             >
               <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
             </Button>
@@ -175,6 +188,18 @@ export function DomainCard({ domain, onRefresh, onDelete }: DomainCardProps) {
         </div>
 
         <div className="mt-4 pt-3 border-t">
+          {/* Health Score */}
+          {domain.health_score !== undefined && (
+            <div className="mb-3">
+              <div className="flex items-center justify-between text-xs mb-1">
+                <span className="text-muted-foreground">Health Score</span>
+                <span className="font-medium">{domain.health_score}%</span>
+              </div>
+              <Progress value={domain.health_score} className="h-1.5" />
+            </div>
+          )}
+
+          {/* DNS Indicators */}
           <div className="flex items-center gap-4">
             <DnsIndicator configured={domain.spf_configured} label="SPF" />
             <DnsIndicator configured={domain.dkim_configured} label="DKIM" />
@@ -188,6 +213,7 @@ export function DomainCard({ domain, onRefresh, onDelete }: DomainCardProps) {
           )}
         </div>
 
+        {/* DNS Config Modal */}
         <DnsConfigModal
           open={showDnsConfig}
           onClose={() => setShowDnsConfig(false)}
@@ -196,6 +222,14 @@ export function DomainCard({ domain, onRefresh, onDelete }: DomainCardProps) {
             setShowDnsConfig(false)
             handleRefresh()
           }}
+        />
+
+        {/* DNS Setup Guide */}
+        <DnsSetupGuide
+          open={showSetupGuide}
+          onClose={() => setShowSetupGuide(false)}
+          domain={domain}
+          onVerify={handleRefresh}
         />
       </CardContent>
     </Card>

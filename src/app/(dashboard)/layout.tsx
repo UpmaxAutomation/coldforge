@@ -1,9 +1,8 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { AppSidebar } from '@/components/layout/app-sidebar'
-import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar'
-import { Separator } from '@/components/ui/separator'
-import { UserNav } from '@/components/layout/user-nav'
+import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar'
+import { DashboardHeader } from '@/components/layout/dashboard-header'
 
 export default async function DashboardLayout({
   children,
@@ -19,18 +18,23 @@ export default async function DashboardLayout({
 
   return (
     <SidebarProvider>
-      <AppSidebar />
-      <SidebarInset>
-        <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
-          <SidebarTrigger className="-ml-1" />
-          <Separator orientation="vertical" className="mr-2 h-4" />
-          <div className="flex-1" />
-          <UserNav user={user} />
-        </header>
-        <main className="flex-1 p-6">
-          {children}
-        </main>
-      </SidebarInset>
+      <div className="relative flex min-h-screen w-full">
+        {/* Background gradient */}
+        <div className="fixed inset-0 gradient-mesh pointer-events-none" />
+
+        {/* Sidebar */}
+        <AppSidebar />
+
+        {/* Main content */}
+        <SidebarInset className="relative">
+          <DashboardHeader user={user} />
+          <main className="flex-1 p-6 animate-fade-in">
+            <div className="mx-auto max-w-7xl">
+              {children}
+            </div>
+          </main>
+        </SidebarInset>
+      </div>
     </SidebarProvider>
   )
 }

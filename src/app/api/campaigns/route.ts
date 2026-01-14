@@ -38,14 +38,14 @@ export async function GET(request: NextRequest) {
     }
 
     // Get user's organization
-    const { data: profile } = await supabase
-      .from('profiles')
+    const { data: userData } = await supabase
+      .from('users')
       .select('organization_id')
       .eq('id', user.id)
       .single() as { data: { organization_id: string } | null }
 
-    if (!profile) {
-      return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
+    if (!userData?.organization_id) {
+      return NextResponse.json({ error: 'No organization found' }, { status: 400 })
     }
 
     const searchParams = request.nextUrl.searchParams
@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from('campaigns')
       .select('*', { count: 'exact' })
-      .eq('organization_id', profile.organization_id)
+      .eq('organization_id', userData.organization_id)
       .order('created_at', { ascending: false })
 
     if (status && status.length > 0) {
@@ -135,21 +135,21 @@ export async function POST(request: NextRequest) {
     }
 
     // Get user's organization
-    const { data: profile } = await supabase
-      .from('profiles')
+    const { data: userData } = await supabase
+      .from('users')
       .select('organization_id')
       .eq('id', user.id)
       .single() as { data: { organization_id: string } | null }
 
-    if (!profile) {
-      return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
+    if (!userData?.organization_id) {
+      return NextResponse.json({ error: 'No organization found' }, { status: 400 })
     }
 
     // Create campaign
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: campaign, error: createError } = await (supabase.from('campaigns') as any)
       .insert({
-        organization_id: profile.organization_id,
+        organization_id: userData.organization_id,
         name,
         type,
         status: 'draft',

@@ -4,8 +4,13 @@ import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { DomainCard } from '@/components/domains/domain-card'
 import { AddDomainModal } from '@/components/domains/add-domain-modal'
+import { DnsSetupGuide } from '@/components/domains/dns-setup-guide'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { CheckCircle, AlertCircle, Globe } from 'lucide-react'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Progress } from '@/components/ui/progress'
+import { CheckCircle, AlertCircle, Globe, Shield, TrendingUp, RefreshCw } from 'lucide-react'
+import { toast } from 'sonner'
 
 interface Domain {
   id: string
@@ -17,6 +22,7 @@ interface Domain {
   dmarc_configured: boolean
   bimi_configured: boolean
   health_status: 'healthy' | 'warning' | 'error' | 'pending'
+  health_score?: number
   last_health_check: string | null
   auto_purchased: boolean
   expires_at: string | null
@@ -26,7 +32,9 @@ export default function DomainsContent() {
   const searchParams = useSearchParams()
   const [domains, setDomains] = useState<Domain[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isVerifyingAll, setIsVerifyingAll] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [selectedDomainForSetup, setSelectedDomainForSetup] = useState<Domain | null>(null)
 
   const success = searchParams.get('success')
   const errorParam = searchParams.get('error')
@@ -69,12 +77,41 @@ export default function DomainsContent() {
   }
 
   const handleRefreshDomain = async (id: string) => {
-    const response = await fetch(`/api/domains/${id}`, {
+    const response = await fetch(`/api/domains/${id}/verify`, {
       method: 'POST',
     })
 
     if (response.ok) {
-      await fetchDomains()
+      const data = await response.json()
+      // Update domain in state with new verification data
+      setDomains(prev => prev.map(d =>
+        d.id === id
+          ? {
+              ...d,
+              health_status: data.healthStatus,
+              health_score: data.healthScore,
+              spf_configured: data.records.spf.configured,
+              dkim_configured: data.records.dkim.configured,
+              dmarc_configured: data.records.dmarc.configured,
+              last_health_check: data.checkedAt
+            }
+          : d
+      ))
+      toast.success('DNS verification complete')
+    } else {
+      toast.error('Failed to verify DNS')
+    }
+  }
+
+  const handleVerifyAllDomains = async () => {
+    setIsVerifyingAll(true)
+    try {
+      await Promise.all(domains.map(d => handleRefreshDomain(d.id)))
+      toast.success('All domains verified')
+    } catch {
+      toast.error('Failed to verify some domains')
+    } finally {
+      setIsVerifyingAll(false)
     }
   }
 
@@ -85,7 +122,23 @@ export default function DomainsContent() {
 
     if (response.ok) {
       setDomains(prev => prev.filter(d => d.id !== id))
+      toast.success('Domain removed')
+    } else {
+      toast.error('Failed to remove domain')
     }
+  }
+
+  // Calculate aggregate stats
+  const getAverageHealthScore = () => {
+    const domainsWithScore = domains.filter(d => d.health_score !== undefined)
+    if (domainsWithScore.length === 0) return 0
+    return Math.round(domainsWithScore.reduce((sum, d) => sum + (d.health_score || 0), 0) / domainsWithScore.length)
+  }
+
+  const getFullyConfiguredCount = () => {
+    return domains.filter(d =>
+      d.spf_configured && d.dkim_configured && d.dmarc_configured
+    ).length
   }
 
   return (
@@ -98,7 +151,19 @@ export default function DomainsContent() {
             Manage domains for your email campaigns
           </p>
         </div>
-        <AddDomainModal onAdd={handleAddDomain} />
+        <div className="flex items-center gap-2">
+          {domains.length > 0 && (
+            <Button
+              variant="outline"
+              onClick={handleVerifyAllDomains}
+              disabled={isVerifyingAll}
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${isVerifyingAll ? 'animate-spin' : ''}`} />
+              Verify All
+            </Button>
+          )}
+          <AddDomainModal onAdd={handleAddDomain} />
+        </div>
       </div>
 
       {/* Alerts */}
@@ -163,30 +228,70 @@ export default function DomainsContent() {
 
       {/* Statistics */}
       {domains.length > 0 && (
-        <div className="grid gap-4 md:grid-cols-4">
-          <div className="rounded-lg border p-4">
-            <div className="text-sm font-medium text-muted-foreground">Total Domains</div>
-            <div className="text-2xl font-bold">{domains.length}</div>
-          </div>
-          <div className="rounded-lg border p-4">
-            <div className="text-sm font-medium text-muted-foreground">Healthy</div>
-            <div className="text-2xl font-bold text-green-600">
-              {domains.filter(d => d.health_status === 'healthy').length}
-            </div>
-          </div>
-          <div className="rounded-lg border p-4">
-            <div className="text-sm font-medium text-muted-foreground">Warnings</div>
-            <div className="text-2xl font-bold text-yellow-600">
-              {domains.filter(d => d.health_status === 'warning').length}
-            </div>
-          </div>
-          <div className="rounded-lg border p-4">
-            <div className="text-sm font-medium text-muted-foreground">Errors</div>
-            <div className="text-2xl font-bold text-red-600">
-              {domains.filter(d => d.health_status === 'error').length}
-            </div>
-          </div>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Domains</CardTitle>
+              <Globe className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{domains.length}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Health Score</CardTitle>
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{getAverageHealthScore()}%</div>
+              <Progress value={getAverageHealthScore()} className="mt-2 h-2" />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Fully Configured</CardTitle>
+              <Shield className="h-4 w-4 text-green-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600">
+                {getFullyConfiguredCount()}/{domains.length}
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Warnings</CardTitle>
+              <AlertCircle className="h-4 w-4 text-yellow-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-yellow-600">
+                {domains.filter(d => d.health_status === 'warning').length}
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Errors</CardTitle>
+              <AlertCircle className="h-4 w-4 text-red-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-red-600">
+                {domains.filter(d => d.health_status === 'error').length}
+              </div>
+            </CardContent>
+          </Card>
         </div>
+      )}
+
+      {/* DNS Setup Guide Modal */}
+      {selectedDomainForSetup && (
+        <DnsSetupGuide
+          open={!!selectedDomainForSetup}
+          onClose={() => setSelectedDomainForSetup(null)}
+          domain={selectedDomainForSetup}
+          onVerify={() => handleRefreshDomain(selectedDomainForSetup.id)}
+        />
       )}
     </div>
   )
