@@ -78,7 +78,7 @@ export class NamecheapRegistrar implements RegistrarClient {
         domain,
         available,
         premium: premiumMatch?.[1] === 'true',
-        price: priceMatch ? parseFloat(priceMatch[1]) : undefined,
+        price: priceMatch ? parseFloat(priceMatch[1] ?? '0') : undefined,
         currency: 'USD',
         period: 1,
       }
@@ -103,7 +103,7 @@ export class NamecheapRegistrar implements RegistrarClient {
 
       for (const match of domainMatches) {
         results.push({
-          domain: match[1],
+          domain: match[1] ?? '',
           available: match[2] === 'true',
           currency: 'USD',
           period: 1,
@@ -119,7 +119,7 @@ export class NamecheapRegistrar implements RegistrarClient {
 
   async purchaseDomain(options: DomainPurchaseOptions): Promise<DomainPurchaseResult> {
     try {
-      const [sld, tld] = options.domain.split('.')
+      const [_sld, _tld] = options.domain.split('.')
 
       const params: Record<string, string> = {
         DomainName: options.domain,
@@ -209,8 +209,8 @@ export class NamecheapRegistrar implements RegistrarClient {
     const [sld, tld] = domain.split('.')
 
     await this.request('namecheap.domains.dns.setCustom', {
-      SLD: sld,
-      TLD: tld,
+      SLD: sld ?? '',
+      TLD: tld ?? '',
       Nameservers: nameservers.join(','),
     })
   }
@@ -219,14 +219,14 @@ export class NamecheapRegistrar implements RegistrarClient {
     const [sld, tld] = domain.split('.')
 
     const xml = await this.request('namecheap.domains.dns.getList', {
-      SLD: sld,
-      TLD: tld,
+      SLD: sld ?? '',
+      TLD: tld ?? '',
     })
 
     const nameservers: string[] = []
     const nsMatches = xml.matchAll(/<Nameserver>([^<]+)<\/Nameserver>/g)
     for (const match of nsMatches) {
-      nameservers.push(match[1])
+      if (match[1]) nameservers.push(match[1])
     }
 
     return nameservers

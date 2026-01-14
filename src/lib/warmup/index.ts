@@ -3,7 +3,7 @@ export * from './types'
 export * from './templates'
 export * from './scheduler'
 
-import type { WarmupConfig, WarmupStats, DEFAULT_WARMUP_CONFIG } from './types'
+import type { WarmupConfig, WarmupStats } from './types'
 import {
   calculateWarmupStats,
   getDailySendLimit,

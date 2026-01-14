@@ -310,19 +310,21 @@ export const WARMUP_TOPICS = [
 
 // Get a random template
 export function getRandomTemplate(): WarmupTemplate {
-  return WARMUP_TEMPLATES[Math.floor(Math.random() * WARMUP_TEMPLATES.length)]
+  const template = WARMUP_TEMPLATES[Math.floor(Math.random() * WARMUP_TEMPLATES.length)]
+  if (!template) throw new Error('No templates available')
+  return template
 }
 
 // Get a random template by category
 export function getTemplateByCategory(category: string): WarmupTemplate | null {
   const templates = WARMUP_TEMPLATES.filter(t => t.category === category)
   if (templates.length === 0) return null
-  return templates[Math.floor(Math.random() * templates.length)]
+  return templates[Math.floor(Math.random() * templates.length)] ?? null
 }
 
 // Get a random topic
 export function getRandomTopic(): string {
-  return WARMUP_TOPICS[Math.floor(Math.random() * WARMUP_TOPICS.length)]
+  return WARMUP_TOPICS[Math.floor(Math.random() * WARMUP_TOPICS.length)] ?? 'updates'
 }
 
 // Fill template variables

@@ -1,6 +1,17 @@
-// @ts-nocheck - TODO: Add proper Supabase type inference
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import type { Tables } from '@/types/database'
+
+type WarmupEmail = Tables<'warmup_emails'>
+
+interface UserWithOrg {
+  organization_id: string | null
+}
+
+interface EmailAccountPartial {
+  id: string
+  email: string
+}
 
 export interface WarmupActivity {
   id: string
@@ -26,11 +37,13 @@ export async function GET(request: NextRequest) {
     }
 
     // Get user's organization
-    const { data: profile } = await supabase
+    const profileResult = await supabase
       .from('users')
       .select('organization_id')
       .eq('id', user.id)
       .single()
+
+    const profile = profileResult.data as UserWithOrg | null
 
     if (!profile?.organization_id) {
       return NextResponse.json({ error: 'No organization found' }, { status: 400 })
@@ -44,10 +57,12 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status')
 
     // Get email account IDs for this organization
-    const { data: accounts } = await supabase
+    const accountsResult = await supabase
       .from('email_accounts')
       .select('id, email')
       .eq('organization_id', profile.organization_id)
+
+    const accounts = accountsResult.data as EmailAccountPartial[] | null
 
     if (!accounts || accounts.length === 0) {
       return NextResponse.json({
@@ -91,7 +106,11 @@ export async function GET(request: NextRequest) {
       .order('sent_at', { ascending: false })
       .range(offset, offset + limit - 1)
 
-    const { data: activity, error, count } = await query
+    const queryResult = await query
+
+    const activity = queryResult.data as WarmupEmail[] | null
+    const error = queryResult.error
+    const count = queryResult.count
 
     if (error) {
       throw error
@@ -100,8 +119,8 @@ export async function GET(request: NextRequest) {
     // Transform activity with email addresses
     const transformedActivity: WarmupActivity[] = (activity || []).map(item => ({
       id: item.id,
-      from_email: emailMap[item.from_account_id] || 'Unknown',
-      to_email: emailMap[item.to_account_id] || 'External',
+      from_email: item.from_account_id ? emailMap[item.from_account_id] || 'Unknown' : 'Unknown',
+      to_email: item.to_account_id ? emailMap[item.to_account_id] || 'External' : 'External',
       subject: item.subject,
       status: item.status,
       sent_at: item.sent_at,

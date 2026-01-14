@@ -4,9 +4,9 @@ export * from './cloudflare'
 export * from './namecheap'
 export * from './porkbun'
 
-import { CloudflareRegistrar, createCloudflareClient } from './cloudflare'
-import { NamecheapRegistrar, createNamecheapClient } from './namecheap'
-import { PorkbunRegistrar, createPorkbunClient } from './porkbun'
+import { createCloudflareClient } from './cloudflare'
+import { createNamecheapClient } from './namecheap'
+import { createPorkbunClient } from './porkbun'
 import type { RegistrarClient, DomainSearchResult } from './types'
 
 // Registrar types

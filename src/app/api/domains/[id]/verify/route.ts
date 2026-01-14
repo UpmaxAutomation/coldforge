@@ -6,18 +6,8 @@ interface RouteContext {
   params: Promise<{ id: string }>
 }
 
-// Type for domain response
-interface DomainResponse {
-  id: string
-  domain: string
-  dkim_selector: string | null
-  spf_configured: boolean
-  dkim_configured: boolean
-  dmarc_configured: boolean
-  tracking_domain_configured?: boolean
-  health_status: 'healthy' | 'warning' | 'error' | 'pending'
-  last_health_check: string | null
-}
+// DomainResponse interface for type reference (used in comments)
+// interface DomainResponse { id: string; domain: string; dkim_selector: string | null; ... }
 
 // Check tracking domain CNAME
 async function checkTrackingDomain(domain: string): Promise<{
@@ -39,14 +29,15 @@ async function checkTrackingDomain(domain: string): Promise<{
 
     try {
       const records = await dns.resolveCname(trackingDomain)
-      if (records && records.length > 0) {
-        result.record = records[0]
+      const firstRecord = records?.[0]
+      if (records && records.length > 0 && firstRecord) {
+        result.record = firstRecord
         // Check if it points to the expected tracking server
-        if (records[0].toLowerCase().includes('instantscale') ||
-            records[0].toLowerCase().includes('tracking')) {
+        if (firstRecord.toLowerCase().includes('instantscale') ||
+            firstRecord.toLowerCase().includes('tracking')) {
           result.configured = true
         } else {
-          result.issues.push(`CNAME points to ${records[0]}, expected tracking.instantscale.com`)
+          result.issues.push(`CNAME points to ${firstRecord}, expected tracking.instantscale.com`)
         }
       }
     } catch {
@@ -113,7 +104,7 @@ function calculateHealthScore(
 }
 
 // POST /api/domains/[id]/verify - Comprehensive DNS verification
-export async function POST(request: NextRequest, context: RouteContext) {
+export async function POST(_request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params
     const supabase = await createClient()

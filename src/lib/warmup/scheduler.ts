@@ -2,7 +2,6 @@ import type {
   WarmupConfig,
   WarmupStats,
   WarmupScheduleEntry,
-  DEFAULT_WARMUP_STAGES,
 } from './types'
 import { generateWarmupEmail } from './templates'
 
@@ -37,14 +36,15 @@ export function calculateWarmupStats(
   todayReceived: number,
   todayReplied: number
 ): WarmupStats {
-  const currentStage = config.stages[mailbox.warmupStage - 1] || config.stages[0]
-  const totalStages = config.stages.length
+  const currentStage = config.stages[mailbox.warmupStage - 1] ?? config.stages[0]
+  // totalStages is config.stages.length - used for reference only
   const totalDaysToComplete = config.stages.reduce((sum, s) => sum + s.daysInStage, 0)
 
   // Calculate days completed
   let daysCompleted = 0
   for (let i = 0; i < mailbox.warmupStage - 1; i++) {
-    daysCompleted += config.stages[i].daysInStage
+    const stage = config.stages[i]
+    if (stage) daysCompleted += stage.daysInStage
   }
   daysCompleted += mailbox.warmupDaysInStage
 
@@ -67,7 +67,7 @@ export function calculateWarmupStats(
   if (replyRate < config.targetReplyRate * 0.5) {
     issues.push('Reply rate is below target')
   }
-  if (todaySent < currentStage.dailySendLimit * 0.5) {
+  if (currentStage && todaySent < currentStage.dailySendLimit * 0.5) {
     issues.push('Not meeting daily send quota')
   }
   if (deliverabilityScore < 70) {
@@ -121,7 +121,8 @@ function calculateDeliverabilityScore(params: {
 // Get the daily send limit for a mailbox based on its stage
 export function getDailySendLimit(stage: number, config: WarmupConfig): number {
   const stageConfig = config.stages[stage - 1]
-  return stageConfig?.dailySendLimit || config.stages[config.stages.length - 1].dailySendLimit
+  const lastStage = config.stages[config.stages.length - 1]
+  return stageConfig?.dailySendLimit ?? lastStage?.dailySendLimit ?? 10
 }
 
 // Check if a mailbox should advance to the next stage
@@ -138,7 +139,7 @@ export function shouldAdvanceStage(
   }
 
   // Check days in stage
-  if (mailbox.warmupDaysInStage < currentStage.daysInStage) {
+  if (!currentStage || mailbox.warmupDaysInStage < currentStage.daysInStage) {
     return false
   }
 
@@ -165,6 +166,8 @@ export function generateWarmupPairs(mailboxes: Mailbox[]): WarmupPair[] {
     for (let j = i + 1; j < enabledMailboxes.length; j++) {
       const sender = enabledMailboxes[i]
       const receiver = enabledMailboxes[j]
+
+      if (!sender || !receiver) continue
 
       // Add pair in both directions
       pairs.push({
@@ -272,7 +275,7 @@ function calculateScheduledTime(
 
 // Process a scheduled warmup email
 export function processWarmupEmail(
-  entry: WarmupScheduleEntry,
+  _entry: WarmupScheduleEntry,
   senderMailbox: Mailbox,
   receiverMailbox: Mailbox,
   isReply: boolean = false
@@ -298,7 +301,12 @@ function shuffleArray<T>(array: T[]): T[] {
   const shuffled = [...array]
   for (let i = shuffled.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1))
-    ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+    const temp = shuffled[i]
+    const swapVal = shuffled[j]
+    if (temp !== undefined && swapVal !== undefined) {
+      shuffled[i] = swapVal
+      shuffled[j] = temp
+    }
   }
   return shuffled
 }
@@ -309,8 +317,8 @@ function generateId(): string {
 
 // Export for external pool interaction
 export function getExternalWarmupPool(
-  internalMailboxes: Mailbox[],
-  externalPoolId: string
+  _internalMailboxes: Mailbox[],
+  _externalPoolId: string
 ): { mailboxId: string; poolId: string }[] {
   // This would connect to an external warmup pool network
   // For now, returns empty - would be implemented with external API

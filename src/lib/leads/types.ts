@@ -144,5 +144,5 @@ export const COMMON_CSV_HEADERS = [
 ]
 
 export function getRandomTagColor(): string {
-  return DEFAULT_TAG_COLORS[Math.floor(Math.random() * DEFAULT_TAG_COLORS.length)]
+  return DEFAULT_TAG_COLORS[Math.floor(Math.random() * DEFAULT_TAG_COLORS.length)] ?? '#3B82F6'
 }

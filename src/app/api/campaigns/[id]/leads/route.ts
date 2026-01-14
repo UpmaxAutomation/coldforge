@@ -1,6 +1,18 @@
-// @ts-nocheck - TODO: Add proper Supabase type inference
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import type { Tables, InsertTables } from '@/types/database'
+
+type Lead = Tables<'leads'>
+type CampaignLead = Tables<'campaign_leads'>
+type Campaign = Tables<'campaigns'>
+
+interface CampaignLeadWithLead extends CampaignLead {
+  lead: Pick<Lead, 'id' | 'email' | 'first_name' | 'last_name' | 'company' | 'title'> | null
+}
+
+interface ProfileWithOrg {
+  organization_id: string
+}
 
 // GET /api/campaigns/[id]/leads - Get leads for a campaign
 export async function GET(
@@ -23,23 +35,27 @@ export async function GET(
     const search = searchParams.get('search')
 
     // Get user's organization
-    const { data: profile } = await supabase
+    const profileResult = await supabase
       .from('profiles')
       .select('organization_id')
       .eq('id', user.id)
-      .single() as { data: { organization_id: string } | null }
+      .single()
+
+    const profile = profileResult.data as ProfileWithOrg | null
 
     if (!profile) {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
     }
 
     // Verify campaign belongs to organization
-    const { data: campaign } = await supabase
+    const campaignResult = await supabase
       .from('campaigns')
       .select('id')
       .eq('id', campaignId)
       .eq('organization_id', profile.organization_id)
       .single()
+
+    const campaign = campaignResult.data as Pick<Campaign, 'id'> | null
 
     if (!campaign) {
       return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
@@ -74,9 +90,13 @@ export async function GET(
     const from = (page - 1) * limit
     const to = from + limit - 1
 
-    const { data: campaignLeads, count, error } = await query
+    const queryResult = await query
       .order('created_at', { ascending: false })
       .range(from, to)
+
+    const campaignLeads = queryResult.data as CampaignLeadWithLead[] | null
+    const count = queryResult.count
+    const error = queryResult.error
 
     if (error) {
       console.error('Error fetching campaign leads:', error)
@@ -159,35 +179,42 @@ export async function POST(
     }
 
     // Get user's organization
-    const { data: profile } = await supabase
+    const profileResult = await supabase
       .from('profiles')
       .select('organization_id')
       .eq('id', user.id)
-      .single() as { data: { organization_id: string } | null }
+      .single()
+
+    const profile = profileResult.data as ProfileWithOrg | null
 
     if (!profile) {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
     }
 
     // Verify campaign belongs to organization
-    const { data: campaign } = await supabase
+    const campaignResult = await supabase
       .from('campaigns')
       .select('id, status')
       .eq('id', campaignId)
       .eq('organization_id', profile.organization_id)
-      .single() as { data: { id: string; status: string } | null }
+      .single()
+
+    const campaign = campaignResult.data as Pick<Campaign, 'id' | 'status'> | null
 
     if (!campaign) {
       return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
     }
 
     // Get leads from the specified lists that aren't already in the campaign
-    const { data: leads, error: leadsError } = await supabase
+    const leadsResult = await supabase
       .from('leads')
       .select('id')
       .in('list_id', listIds)
       .eq('organization_id', profile.organization_id)
       .eq('status', 'active')
+
+    const leads = leadsResult.data as Pick<Lead, 'id'>[] | null
+    const leadsError = leadsResult.error
 
     if (leadsError) {
       console.error('Error fetching leads:', leadsError)
@@ -199,10 +226,12 @@ export async function POST(
     }
 
     // Get existing campaign leads
-    const { data: existingCampaignLeads } = await supabase
+    const existingResult = await supabase
       .from('campaign_leads')
       .select('lead_id')
       .eq('campaign_id', campaignId)
+
+    const existingCampaignLeads = existingResult.data as Pick<CampaignLead, 'lead_id'>[] | null
 
     const existingLeadIds = new Set((existingCampaignLeads || []).map(cl => cl.lead_id))
 
@@ -220,28 +249,30 @@ export async function POST(
       campaign_id: campaignId,
       lead_id: leadId,
       current_step: 1,
-      status: 'pending',
+      status: 'pending' as const,
     }))
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error: insertError } = await (supabase.from('campaign_leads') as any)
-      .insert(campaignLeadsToInsert)
+    // Use type assertion to bypass RLS-restricted types
+    const insertResult = await (supabase
+      .from('campaign_leads') as ReturnType<typeof supabase.from>)
+      .insert(campaignLeadsToInsert as InsertTables<'campaign_leads'>[])
 
-    if (insertError) {
-      console.error('Error adding leads to campaign:', insertError)
+    if (insertResult.error) {
+      console.error('Error adding leads to campaign:', insertResult.error)
       return NextResponse.json({ error: 'Failed to add leads' }, { status: 500 })
     }
 
     // Update campaign stats
-    const { data: statsData } = await supabase
+    const statsResult = await supabase
       .from('campaign_leads')
       .select('id', { count: 'exact' })
       .eq('campaign_id', campaignId)
 
-    const totalLeads = statsData?.length || 0
+    const totalLeads = statsResult.data?.length || 0
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase.from('campaigns') as any)
+    // Use type assertion to bypass RLS-restricted types
+    await (supabase
+      .from('campaigns') as ReturnType<typeof supabase.from>)
       .update({
         stats: {
           totalLeads,
@@ -257,7 +288,7 @@ export async function POST(
           bounceRate: 0,
         },
         updated_at: new Date().toISOString(),
-      })
+      } as Record<string, unknown>)
       .eq('id', campaignId)
 
     return NextResponse.json({ addedCount: newLeadIds.length })
@@ -292,37 +323,41 @@ export async function DELETE(
     }
 
     // Get user's organization
-    const { data: profile } = await supabase
+    const profileResult = await supabase
       .from('profiles')
       .select('organization_id')
       .eq('id', user.id)
-      .single() as { data: { organization_id: string } | null }
+      .single()
+
+    const profile = profileResult.data as ProfileWithOrg | null
 
     if (!profile) {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
     }
 
     // Verify campaign belongs to organization
-    const { data: campaign } = await supabase
+    const campaignResult = await supabase
       .from('campaigns')
       .select('id, status')
       .eq('id', campaignId)
       .eq('organization_id', profile.organization_id)
       .single()
 
+    const campaign = campaignResult.data as Pick<Campaign, 'id' | 'status'> | null
+
     if (!campaign) {
       return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
     }
 
     // Remove lead from campaign
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error: deleteError } = await (supabase.from('campaign_leads') as any)
+    const deleteResult = await supabase
+      .from('campaign_leads')
       .delete()
       .eq('id', leadId)
       .eq('campaign_id', campaignId)
 
-    if (deleteError) {
-      console.error('Error removing lead from campaign:', deleteError)
+    if (deleteResult.error) {
+      console.error('Error removing lead from campaign:', deleteResult.error)
       return NextResponse.json({ error: 'Failed to remove lead' }, { status: 500 })
     }
 

@@ -14,7 +14,6 @@ import {
 import {
   Mail,
   Eye,
-  MousePointer,
   MessageSquare,
   AlertCircle,
   TrendingUp,
@@ -51,7 +50,7 @@ interface DailyStats {
 
 export function CampaignAnalytics({ campaignId, stats }: CampaignAnalyticsProps) {
   const [stepAnalytics, setStepAnalytics] = useState<StepAnalytics[]>([])
-  const [dailyStats, setDailyStats] = useState<DailyStats[]>([])
+  const [_dailyStats, setDailyStats] = useState<DailyStats[]>([])
   const [loading, setLoading] = useState(true)
   const [timeRange, setTimeRange] = useState('7d')
 

@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { eventType, messageId, email, bounceDetails, timestamp, provider } = body
+    const { eventType, messageId, email: _email, bounceDetails, timestamp, provider: _provider } = body
 
     if (!eventType || !messageId) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })

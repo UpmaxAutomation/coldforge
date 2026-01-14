@@ -6,8 +6,6 @@ import { usePathname } from 'next/navigation'
 import {
   Search,
   Bell,
-  Settings,
-  ChevronDown,
   Sparkles,
   Command,
   Plus,

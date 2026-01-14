@@ -1,6 +1,13 @@
-// @ts-nocheck - TODO: Add proper Supabase type inference
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import type { Tables, InsertTables } from '@/types/database'
+
+type CampaignSequence = Tables<'campaign_sequences'>
+type Campaign = Tables<'campaigns'>
+
+interface ProfileWithOrg {
+  organization_id: string
+}
 
 interface SequenceStep {
   id: string
@@ -21,7 +28,7 @@ interface SequenceStep {
 
 // GET /api/campaigns/[id]/sequences - Get all sequence steps for a campaign
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -35,34 +42,41 @@ export async function GET(
     const { id: campaignId } = await params
 
     // Get user's organization
-    const { data: profile } = await supabase
+    const profileResult = await supabase
       .from('profiles')
       .select('organization_id')
       .eq('id', user.id)
-      .single() as { data: { organization_id: string } | null }
+      .single()
+
+    const profile = profileResult.data as ProfileWithOrg | null
 
     if (!profile) {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
     }
 
     // Verify campaign belongs to organization
-    const { data: campaign } = await supabase
+    const campaignResult = await supabase
       .from('campaigns')
       .select('id')
       .eq('id', campaignId)
       .eq('organization_id', profile.organization_id)
       .single()
 
+    const campaign = campaignResult.data as Pick<Campaign, 'id'> | null
+
     if (!campaign) {
       return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
     }
 
     // Get all sequence steps
-    const { data: sequences, error } = await supabase
+    const sequencesResult = await supabase
       .from('campaign_sequences')
       .select('*')
       .eq('campaign_id', campaignId)
       .order('step_number', { ascending: true })
+
+    const sequences = sequencesResult.data as CampaignSequence[] | null
+    const error = sequencesResult.error
 
     if (error) {
       console.error('Error fetching sequences:', error)
@@ -114,23 +128,27 @@ export async function POST(
     const body = await request.json()
 
     // Get user's organization
-    const { data: profile } = await supabase
+    const profileResult = await supabase
       .from('profiles')
       .select('organization_id')
       .eq('id', user.id)
-      .single() as { data: { organization_id: string } | null }
+      .single()
+
+    const profile = profileResult.data as ProfileWithOrg | null
 
     if (!profile) {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
     }
 
     // Verify campaign belongs to organization and is editable
-    const { data: campaign } = await supabase
+    const campaignResult = await supabase
       .from('campaigns')
       .select('id, status')
       .eq('id', campaignId)
       .eq('organization_id', profile.organization_id)
-      .single() as { data: { id: string; status: string } | null }
+      .single()
+
+    const campaign = campaignResult.data as Pick<Campaign, 'id' | 'status'> | null
 
     if (!campaign) {
       return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
@@ -144,36 +162,44 @@ export async function POST(
     }
 
     // Get the next step number
-    const { data: existingSteps } = await supabase
+    const existingStepsResult = await supabase
       .from('campaign_sequences')
       .select('step_number')
       .eq('campaign_id', campaignId)
       .order('step_number', { ascending: false })
       .limit(1)
 
-    const nextStepNumber = existingSteps && existingSteps.length > 0
+    const existingSteps = existingStepsResult.data as Pick<CampaignSequence, 'step_number'>[] | null
+
+    const nextStepNumber = existingSteps && existingSteps.length > 0 && existingSteps[0]
       ? existingSteps[0].step_number + 1
       : 1
 
     // Create the new step
     const variant = body.variants?.[0] || {}
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: newStep, error: insertError } = await (supabase.from('campaign_sequences') as any)
-      .insert({
-        campaign_id: campaignId,
-        step_number: nextStepNumber,
-        subject: variant.subject || '',
-        body_html: variant.isPlainText ? '' : variant.body || '',
-        body_text: variant.isPlainText ? variant.body || '' : '',
-        delay_days: body.delayDays || 0,
-        delay_hours: body.delayHours || 0,
-        condition_type: body.condition || 'always',
-      })
+    const insertData: InsertTables<'campaign_sequences'> = {
+      campaign_id: campaignId,
+      step_number: nextStepNumber,
+      subject: variant.subject || '',
+      body_html: variant.isPlainText ? '' : variant.body || '',
+      body_text: variant.isPlainText ? variant.body || '' : '',
+      delay_days: body.delayDays || 0,
+      delay_hours: body.delayHours || 0,
+      condition_type: body.condition || 'always',
+    }
+
+    // Use type assertion to bypass RLS-restricted types
+    const insertResult = await (supabase
+      .from('campaign_sequences') as ReturnType<typeof supabase.from>)
+      .insert(insertData as InsertTables<'campaign_sequences'>)
       .select()
       .single()
 
-    if (insertError) {
+    const newStep = insertResult.data as CampaignSequence | null
+    const insertError = insertResult.error
+
+    if (insertError || !newStep) {
       console.error('Error creating step:', insertError)
       return NextResponse.json({ error: 'Failed to create step' }, { status: 500 })
     }
@@ -190,7 +216,7 @@ export async function POST(
         name: 'Version A',
         weight: 100,
         subject: newStep.subject,
-        body: newStep.body_html || newStep.body_text,
+        body: newStep.body_html || newStep.body_text || '',
         isPlainText: !newStep.body_html,
       }],
     }
@@ -227,23 +253,27 @@ export async function PUT(
     }
 
     // Get user's organization
-    const { data: profile } = await supabase
+    const profileResult = await supabase
       .from('profiles')
       .select('organization_id')
       .eq('id', user.id)
-      .single() as { data: { organization_id: string } | null }
+      .single()
+
+    const profile = profileResult.data as ProfileWithOrg | null
 
     if (!profile) {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
     }
 
     // Verify campaign belongs to organization and is editable
-    const { data: campaign } = await supabase
+    const campaignResult = await supabase
       .from('campaigns')
       .select('id, status')
       .eq('id', campaignId)
       .eq('organization_id', profile.organization_id)
-      .single() as { data: { id: string; status: string } | null }
+      .single()
+
+    const campaign = campaignResult.data as Pick<Campaign, 'id' | 'status'> | null
 
     if (!campaign) {
       return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
@@ -257,33 +287,34 @@ export async function PUT(
     }
 
     // Delete existing steps
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase.from('campaign_sequences') as any)
+    await supabase
+      .from('campaign_sequences')
       .delete()
       .eq('campaign_id', campaignId)
 
     // Insert new steps
     if (steps.length > 0) {
-      const stepsToInsert = steps.map((step, index) => {
-        const variant = step.variants?.[0] || {}
+      const stepsToInsert: InsertTables<'campaign_sequences'>[] = steps.map((step, index) => {
+        const variant = step.variants?.[0]
         return {
           campaign_id: campaignId,
           step_number: index + 1,
-          subject: variant.subject || '',
-          body_html: variant.isPlainText ? '' : variant.body || '',
-          body_text: variant.isPlainText ? variant.body || '' : '',
+          subject: variant?.subject || '',
+          body_html: variant?.isPlainText ? '' : variant?.body || '',
+          body_text: variant?.isPlainText ? variant?.body || '' : '',
           delay_days: step.delayDays || 0,
           delay_hours: step.delayHours || 0,
           condition_type: step.condition || 'always',
         }
       })
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error: insertError } = await (supabase.from('campaign_sequences') as any)
-        .insert(stepsToInsert)
+      // Use type assertion to bypass RLS-restricted types
+      const insertResult = await (supabase
+        .from('campaign_sequences') as ReturnType<typeof supabase.from>)
+        .insert(stepsToInsert as InsertTables<'campaign_sequences'>[])
 
-      if (insertError) {
-        console.error('Error inserting steps:', insertError)
+      if (insertResult.error) {
+        console.error('Error inserting steps:', insertResult.error)
         return NextResponse.json({ error: 'Failed to save steps' }, { status: 500 })
       }
     }
@@ -320,23 +351,27 @@ export async function DELETE(
     }
 
     // Get user's organization
-    const { data: profile } = await supabase
+    const profileResult = await supabase
       .from('profiles')
       .select('organization_id')
       .eq('id', user.id)
-      .single() as { data: { organization_id: string } | null }
+      .single()
+
+    const profile = profileResult.data as ProfileWithOrg | null
 
     if (!profile) {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
     }
 
     // Verify campaign belongs to organization and is editable
-    const { data: campaign } = await supabase
+    const campaignResult = await supabase
       .from('campaigns')
       .select('id, status')
       .eq('id', campaignId)
       .eq('organization_id', profile.organization_id)
-      .single() as { data: { id: string; status: string } | null }
+      .single()
+
+    const campaign = campaignResult.data as Pick<Campaign, 'id' | 'status'> | null
 
     if (!campaign) {
       return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
@@ -350,31 +385,35 @@ export async function DELETE(
     }
 
     // Delete the step
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error: deleteError } = await (supabase.from('campaign_sequences') as any)
+    const deleteResult = await supabase
+      .from('campaign_sequences')
       .delete()
       .eq('id', stepId)
       .eq('campaign_id', campaignId)
 
-    if (deleteError) {
-      console.error('Error deleting step:', deleteError)
+    if (deleteResult.error) {
+      console.error('Error deleting step:', deleteResult.error)
       return NextResponse.json({ error: 'Failed to delete step' }, { status: 500 })
     }
 
     // Reorder remaining steps
-    const { data: remainingSteps } = await supabase
+    const remainingStepsResult = await supabase
       .from('campaign_sequences')
       .select('id, step_number')
       .eq('campaign_id', campaignId)
       .order('step_number', { ascending: true })
 
+    const remainingSteps = remainingStepsResult.data as Pick<CampaignSequence, 'id' | 'step_number'>[] | null
+
     if (remainingSteps && remainingSteps.length > 0) {
       for (let i = 0; i < remainingSteps.length; i++) {
-        if (remainingSteps[i].step_number !== i + 1) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (supabase.from('campaign_sequences') as any)
-            .update({ step_number: i + 1 })
-            .eq('id', remainingSteps[i].id)
+        const step = remainingSteps[i]
+        if (step && step.step_number !== i + 1) {
+          // Use type assertion to bypass RLS-restricted types
+          await (supabase
+            .from('campaign_sequences') as ReturnType<typeof supabase.from>)
+            .update({ step_number: i + 1 } as Record<string, unknown>)
+            .eq('id', step.id)
         }
       }
     }

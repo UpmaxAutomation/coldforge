@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { verifyWebhookSignature, getPlanById } from '@/lib/billing'
+import { verifyWebhookSignature } from '@/lib/billing'
 import Stripe from 'stripe'
 
 // POST /api/webhooks/stripe - Handle Stripe webhooks

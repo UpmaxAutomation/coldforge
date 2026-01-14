@@ -2,7 +2,7 @@
  * Test Data Factories
  * Generate realistic test data for all database entities
  */
-import type { Database, Tables } from '@/types/database'
+import type { Tables } from '@/types/database'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 
 // ============================================================================
@@ -27,7 +27,11 @@ function randomInt(min: number, max: number): number {
  * Pick a random item from an array
  */
 function randomPick<T>(items: T[]): T {
-  return items[randomInt(0, items.length - 1)]
+  const item = items[randomInt(0, items.length - 1)]
+  if (item === undefined) {
+    throw new Error('randomPick called with empty array')
+  }
+  return item
 }
 
 /**

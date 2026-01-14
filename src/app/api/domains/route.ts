@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { checkDnsHealth } from '@/lib/dns'
+import { createDomainSchema } from '@/lib/schemas'
 
 // Type for domain response
 interface DomainResponse {
@@ -86,23 +87,15 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { domain, dns_provider } = body
 
-    if (!domain) {
-      return NextResponse.json(
-        { error: 'Domain is required' },
-        { status: 400 }
-      )
+    // Validate request body with Zod schema
+    const validationResult = createDomainSchema.safeParse(body)
+    if (!validationResult.success) {
+      const errorMessage = validationResult.error.issues[0]?.message || 'Invalid request body'
+      return NextResponse.json({ error: errorMessage }, { status: 400 })
     }
 
-    // Validate domain format
-    const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9]?\.[a-zA-Z]{2,}$/
-    if (!domainRegex.test(domain)) {
-      return NextResponse.json(
-        { error: 'Invalid domain format' },
-        { status: 400 }
-      )
-    }
+    const { domain, dns_provider } = validationResult.data
 
     // Check DNS health for initial status
     let healthResult

@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import {
+  createMailboxSchema,
+  listMailboxesQuerySchema,
+} from '@/lib/schemas'
 
 interface MailboxRecord {
   id: string
@@ -29,11 +33,19 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Parse and validate query parameters
     const { searchParams } = new URL(request.url)
-    const domainId = searchParams.get('domain_id')
-    const status = searchParams.get('status')
-    const page = parseInt(searchParams.get('page') || '1', 10)
-    const limit = parseInt(searchParams.get('limit') || '50', 10)
+    const queryResult = listMailboxesQuerySchema.safeParse({
+      page: searchParams.get('page'),
+      limit: searchParams.get('limit'),
+      domain_id: searchParams.get('domain_id'),
+      status: searchParams.get('status'),
+    })
+
+    const { page, limit, domain_id: domainId, status } = queryResult.success
+      ? queryResult.data
+      : { page: 1, limit: 50, domain_id: undefined, status: undefined }
+
     const offset = (page - 1) * limit
 
     // Get user's organization
@@ -120,23 +132,24 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
+
+    // Validate request body with Zod schema
+    const validationResult = createMailboxSchema.safeParse(body)
+    if (!validationResult.success) {
+      const errorMessage = validationResult.error.issues[0]?.message || 'Invalid request body'
+      return NextResponse.json({ error: errorMessage }, { status: 400 })
+    }
+
     const {
       domainId,
       email,
       firstName,
       lastName,
-      password,
-      provider = 'custom_smtp',
-      warmupEnabled = false,
-      sendingQuota = 50,
-    } = body
-
-    if (!domainId || !email || !firstName || !lastName) {
-      return NextResponse.json(
-        { error: 'Domain ID, email, first name, and last name are required' },
-        { status: 400 }
-      )
-    }
+      password: _password,
+      provider,
+      warmupEnabled,
+      sendingQuota,
+    } = validationResult.data
 
     // Get user's organization
     const { data: profile } = await supabase

@@ -33,7 +33,6 @@ function scanFile(filePath: string): ValidationResult {
     if (!button.includes('onClick') && !button.includes('type="submit"') && !button.includes('asChild')) {
       // Check if it's inside a form (submit button)
       const beforeButton = content.substring(0, content.indexOf(button))
-      const afterButton = content.substring(content.indexOf(button))
       const isInForm = beforeButton.lastIndexOf('<form') > beforeButton.lastIndexOf('</form')
 
       if (!isInForm) {

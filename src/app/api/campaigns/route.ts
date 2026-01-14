@@ -8,6 +8,10 @@ import {
   type CampaignSettings,
   type CampaignStats,
 } from '@/lib/campaigns'
+import {
+  createCampaignSchema,
+  listCampaignsQuerySchema,
+} from '@/lib/schemas'
 
 interface CampaignRecord {
   id: string
@@ -48,10 +52,18 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'No organization found' }, { status: 400 })
     }
 
-    const searchParams = request.nextUrl.searchParams
-    const status = searchParams.get('status')?.split(',') as CampaignStatus[] | undefined
-    const page = parseInt(searchParams.get('page') || '1')
-    const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 100)
+    // Parse and validate query parameters
+    const queryResult = listCampaignsQuerySchema.safeParse({
+      page: request.nextUrl.searchParams.get('page'),
+      limit: request.nextUrl.searchParams.get('limit'),
+      status: request.nextUrl.searchParams.get('status'),
+    })
+
+    const { page, limit, status } = queryResult.success
+      ? queryResult.data
+      : { page: 1, limit: 20, status: undefined }
+
+    const statusFilter = status as CampaignStatus[] | undefined
     const offset = (page - 1) * limit
 
     // Build query
@@ -61,8 +73,8 @@ export async function GET(request: NextRequest) {
       .eq('organization_id', userData.organization_id)
       .order('created_at', { ascending: false })
 
-    if (status && status.length > 0) {
-      query = query.in('status', status)
+    if (statusFilter && statusFilter.length > 0) {
+      query = query.in('status', statusFilter)
     }
 
     query = query.range(offset, offset + limit - 1)
@@ -122,17 +134,15 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const {
-      name,
-      type = 'cold_email',
-      settings,
-      leadListIds,
-      mailboxIds,
-    } = body
 
-    if (!name) {
-      return NextResponse.json({ error: 'Campaign name is required' }, { status: 400 })
+    // Validate request body with Zod schema
+    const validationResult = createCampaignSchema.safeParse(body)
+    if (!validationResult.success) {
+      const errorMessage = validationResult.error.issues[0]?.message || 'Invalid request body'
+      return NextResponse.json({ error: errorMessage }, { status: 400 })
     }
+
+    const { name, type, settings, leadListIds, mailboxIds } = validationResult.data
 
     // Get user's organization
     const { data: userData } = await supabase

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { PLANS } from '@/lib/billing'
 
 // GET /api/billing/plans - List available plans
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   const activePlans = PLANS.filter(p => p.isActive).map(plan => ({
     id: plan.id,
     name: plan.name,

@@ -129,7 +129,7 @@ export async function GET(request: NextRequest) {
     const dayCount = period === '7d' ? 7 : period === '90d' ? 90 : 30
     for (let i = dayCount - 1; i >= 0; i--) {
       const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000)
-      const dateStr = date.toISOString().split('T')[0]
+      const dateStr = date.toISOString().split('T')[0] || ''
       dailyMap.set(dateStr, {
         date: dateStr,
         sent: 0,
@@ -143,7 +143,7 @@ export async function GET(request: NextRequest) {
 
     // Populate with actual data
     emails?.forEach(email => {
-      const dateStr = email.sent_at.split('T')[0]
+      const dateStr = email.sent_at.split('T')[0] || ''
       const dayStats = dailyMap.get(dateStr)
       if (dayStats) {
         dayStats.sent++
@@ -182,7 +182,9 @@ export async function GET(request: NextRequest) {
 
     const heatmapData: HourlyStats[] = []
     hourlyMap.forEach((stats, key) => {
-      const [day, hour] = key.split('-').map(Number)
+      const parts = key.split('-').map(Number)
+      const day = parts[0] ?? 0
+      const hour = parts[1] ?? 0
       heatmapData.push({
         hour,
         dayOfWeek: day,

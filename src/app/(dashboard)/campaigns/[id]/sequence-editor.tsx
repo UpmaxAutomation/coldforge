@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
@@ -46,13 +46,8 @@ import {
   MoreHorizontal,
   Eye,
   Edit,
-  ChevronDown,
-  ChevronUp,
-  Sparkles,
   Split,
   AlertCircle,
-  CheckCircle,
-  XCircle,
   Save,
   Variable
 } from 'lucide-react'
@@ -75,7 +70,6 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import {
-  type SequenceStep,
   type EmailVariant,
   BUILT_IN_VARIABLES,
   generateStepId,
@@ -394,7 +388,6 @@ export function SequenceEditor({ campaignId, isEditable }: SequenceEditorProps) 
               <SortableStepCard
                 key={step.id}
                 step={step}
-                index={index}
                 isEditable={isEditable}
                 isFirst={index === 0}
                 onEdit={() => openStepEditor(step)}
@@ -520,7 +513,7 @@ export function SequenceEditor({ campaignId, isEditable }: SequenceEditorProps) 
                 </div>
 
                 <div className="space-y-4">
-                  {editingStep.variants.map((variant, vIndex) => (
+                  {editingStep.variants.map((variant) => (
                     <Card key={variant.id}>
                       <CardHeader className="py-3">
                         <div className="flex items-center justify-between">
@@ -690,7 +683,6 @@ export function SequenceEditor({ campaignId, isEditable }: SequenceEditorProps) 
 
 interface SortableStepCardProps {
   step: Step
-  index: number
   isEditable: boolean
   isFirst: boolean
   onEdit: () => void
@@ -701,7 +693,6 @@ interface SortableStepCardProps {
 
 function SortableStepCard({
   step,
-  index,
   isEditable,
   isFirst,
   onEdit,
@@ -786,10 +777,10 @@ function SortableStepCard({
                   {hasContent ? (
                     <div className="space-y-1">
                       <p className="text-sm font-medium truncate">
-                        {variant.subject || '(No subject)'}
+                        {variant?.subject || '(No subject)'}
                       </p>
                       <p className="text-xs text-muted-foreground line-clamp-2">
-                        {variant.body?.replace(/<[^>]*>/g, '') || '(No content)'}
+                        {variant?.body?.replace(/<[^>]*>/g, '') || '(No content)'}
                       </p>
                     </div>
                   ) : (
@@ -806,8 +797,8 @@ function SortableStepCard({
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => onPreview(variant)}
-                        disabled={!hasContent}
+                        onClick={() => variant && onPreview(variant)}
+                        disabled={!hasContent || !variant}
                       >
                         <Eye className="h-4 w-4" />
                       </Button>

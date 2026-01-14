@@ -112,7 +112,7 @@ export function withRateLimit(
   request: NextRequest,
   config: RateLimitConfig = rateLimitConfigs.api
 ): void {
-  const { allowed, remaining, resetTime } = checkRateLimit(request, config)
+  const { allowed, remaining: _remaining, resetTime } = checkRateLimit(request, config)
 
   if (!allowed) {
     const retryAfter = Math.ceil((resetTime - Date.now()) / 1000)

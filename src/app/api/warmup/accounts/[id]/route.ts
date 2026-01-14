@@ -1,6 +1,13 @@
-// @ts-nocheck - TODO: Add proper Supabase type inference
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import type { Tables } from '@/types/database'
+
+type EmailAccount = Tables<'email_accounts'>
+type WarmupEmail = Tables<'warmup_emails'>
+
+interface UserWithOrg {
+  organization_id: string | null
+}
 
 // PATCH /api/warmup/accounts/[id] - Toggle warmup for an account
 export async function PATCH(
@@ -20,23 +27,28 @@ export async function PATCH(
     const { warmup_enabled, warmup_progress, reset_progress } = body
 
     // Get user's organization
-    const { data: profile } = await supabase
+    const profileResult = await supabase
       .from('users')
       .select('organization_id')
       .eq('id', user.id)
       .single()
+
+    const profile = profileResult.data as UserWithOrg | null
 
     if (!profile?.organization_id) {
       return NextResponse.json({ error: 'No organization found' }, { status: 400 })
     }
 
     // Verify account belongs to organization
-    const { data: existingAccount, error: fetchError } = await supabase
+    const accountResult = await supabase
       .from('email_accounts')
       .select('id, organization_id, warmup_enabled, warmup_progress')
       .eq('id', id)
       .eq('organization_id', profile.organization_id)
       .single()
+
+    const existingAccount = accountResult.data as Pick<EmailAccount, 'id' | 'organization_id' | 'warmup_enabled' | 'warmup_progress'> | null
+    const fetchError = accountResult.error
 
     if (fetchError || !existingAccount) {
       return NextResponse.json({ error: 'Account not found' }, { status: 404 })
@@ -70,14 +82,14 @@ export async function PATCH(
       updates.warmup_progress = 0
     }
 
-    // Update account
-    const { error: updateError } = await supabase
-      .from('email_accounts')
-      .update(updates)
+    // Update account - use type assertion to bypass RLS-restricted types
+    const updateResult = await (supabase
+      .from('email_accounts') as ReturnType<typeof supabase.from>)
+      .update(updates as Record<string, unknown>)
       .eq('id', id)
 
-    if (updateError) {
-      console.error('Error updating warmup settings:', updateError)
+    if (updateResult.error) {
+      console.error('Error updating warmup settings:', updateResult.error)
       return NextResponse.json({ error: 'Failed to update warmup settings' }, { status: 500 })
     }
 
@@ -96,7 +108,7 @@ export async function PATCH(
 
 // GET /api/warmup/accounts/[id] - Get warmup details for a specific account
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -110,23 +122,28 @@ export async function GET(
     const { id } = await params
 
     // Get user's organization
-    const { data: profile } = await supabase
+    const profileResult = await supabase
       .from('users')
       .select('organization_id')
       .eq('id', user.id)
       .single()
+
+    const profile = profileResult.data as UserWithOrg | null
 
     if (!profile?.organization_id) {
       return NextResponse.json({ error: 'No organization found' }, { status: 400 })
     }
 
     // Get account with warmup details
-    const { data: account, error } = await supabase
+    const accountResult = await supabase
       .from('email_accounts')
       .select('*')
       .eq('id', id)
       .eq('organization_id', profile.organization_id)
       .single()
+
+    const account = accountResult.data as EmailAccount | null
+    const error = accountResult.error
 
     if (error || !account) {
       return NextResponse.json({ error: 'Account not found' }, { status: 404 })
@@ -136,12 +153,14 @@ export async function GET(
     const thirtyDaysAgo = new Date()
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
 
-    const { data: warmupEmails } = await supabase
+    const warmupEmailsResult = await supabase
       .from('warmup_emails')
       .select('*')
       .or(`from_account_id.eq.${id},to_account_id.eq.${id}`)
       .gte('sent_at', thirtyDaysAgo.toISOString())
       .order('sent_at', { ascending: false })
+
+    const warmupEmails = warmupEmailsResult.data as WarmupEmail[] | null
 
     // Calculate detailed stats
     const sent = warmupEmails?.filter(e => e.from_account_id === id) || []

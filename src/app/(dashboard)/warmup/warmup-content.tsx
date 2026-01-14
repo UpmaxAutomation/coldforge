@@ -79,8 +79,8 @@ interface WarmupActivity {
 }
 
 export default function WarmupContent() {
-  const [stats, setStats] = useState<WarmupStats | null>(null)
-  const [chartData, setChartData] = useState<ChartData[]>([])
+  const [_stats, setStats] = useState<WarmupStats | null>(null)
+  const [_chartData, _setChartData] = useState<ChartData[]>([])
   const [accounts, setAccounts] = useState<WarmupAccount[]>([])
   const [activity, setActivity] = useState<WarmupActivity[]>([])
   const [loading, setLoading] = useState(true)
@@ -175,6 +175,7 @@ export default function WarmupContent() {
     if (score >= 50) return <Badge className="bg-yellow-100 text-yellow-800">Warning</Badge>
     return <Badge className="bg-red-100 text-red-800">Poor</Badge>
   }
+  void getHealthBadge // Suppress unused warning - may be used in future
 
   const getStatusBadge = (status: string) => {
     switch (status) {

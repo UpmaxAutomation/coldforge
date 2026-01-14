@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import {
+  createLeadSchema,
+  listLeadsQuerySchema,
+} from '@/lib/schemas'
 
 // GET /api/leads - List all leads
 export async function GET(request: NextRequest) {
@@ -22,10 +26,18 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'No organization found' }, { status: 400 })
     }
 
+    // Parse and validate query parameters
     const { searchParams } = new URL(request.url)
-    const listId = searchParams.get('listId')
-    const page = parseInt(searchParams.get('page') || '1')
-    const limit = parseInt(searchParams.get('limit') || '50')
+    const queryResult = listLeadsQuerySchema.safeParse({
+      page: searchParams.get('page'),
+      limit: searchParams.get('limit'),
+      listId: searchParams.get('listId'),
+    })
+
+    const { page, limit, listId } = queryResult.success
+      ? queryResult.data
+      : { page: 1, limit: 50, listId: undefined }
+
     const offset = (page - 1) * limit
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -82,11 +94,15 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { email, firstName, lastName, company, title, phone, linkedinUrl, listId, customFields } = body
 
-    if (!email) {
-      return NextResponse.json({ error: 'Email is required' }, { status: 400 })
+    // Validate request body with Zod schema
+    const validationResult = createLeadSchema.safeParse(body)
+    if (!validationResult.success) {
+      const errorMessage = validationResult.error.issues[0]?.message || 'Invalid request body'
+      return NextResponse.json({ error: errorMessage }, { status: 400 })
     }
+
+    const { email, firstName, lastName, company, title, phone, linkedinUrl, listId, customFields } = validationResult.data
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: lead, error } = await (supabase.from('leads') as any)

@@ -20,14 +20,12 @@ const GRAPH_API_BASE = 'https://graph.microsoft.com/v1.0'
 
 export class Microsoft365Provider implements MailboxProviderClient {
   name = 'microsoft_365'
-  private config: Microsoft365Config
+  // config is stored but not currently used directly - MSAL client is configured from it
   private msalClient: ConfidentialClientApplication
   private accessToken: string | null = null
   private tokenExpiry: Date | null = null
 
   constructor(config: Microsoft365Config) {
-    this.config = config
-
     this.msalClient = new ConfidentialClientApplication({
       auth: {
         clientId: config.clientId,
@@ -89,7 +87,7 @@ export class Microsoft365Provider implements MailboxProviderClient {
   async createMailbox(config: MailboxConfig): Promise<MailboxCreateResult> {
     try {
       const password = config.password || this.generateSecurePassword()
-      const [localPart, domain] = config.email.split('@')
+      const [localPart, _domain] = config.email.split('@')
 
       // Create user with Exchange mailbox
       const user = await this.request<{
@@ -346,8 +344,8 @@ export class Microsoft365Provider implements MailboxProviderClient {
 
   async getMailboxStats(email: string): Promise<MailboxStats | null> {
     try {
-      // Get mailbox settings and statistics
-      const mailbox = await this.request<{
+      // Get mailbox settings and statistics (call made for potential future use)
+      await this.request<{
         totalItemSize?: { value: number }
       }>(`/users/${email}/mailboxSettings`).catch(() => null)
 
@@ -374,7 +372,7 @@ export class Microsoft365Provider implements MailboxProviderClient {
     }
   }
 
-  async getSendingQuota(email: string): Promise<MailboxQuota | null> {
+  async getSendingQuota(_email: string): Promise<MailboxQuota | null> {
     // Default Microsoft 365 limits
     return {
       used: 0,

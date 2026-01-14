@@ -44,7 +44,6 @@ import {
   Mail,
   Building,
   RefreshCw,
-  Download,
   Search,
   FolderPlus,
   Check,
@@ -230,7 +229,7 @@ export function LeadsContent() {
     try {
       const text = await file.text()
       const lines = text.split('\n').filter(line => line.trim())
-      const headers = lines[0].toLowerCase().split(',').map(h => h.trim())
+      const headers = lines[0]?.toLowerCase().split(',').map(h => h.trim()) ?? []
 
       const emailIndex = headers.findIndex(h => h.includes('email'))
       const firstNameIndex = headers.findIndex(h => h.includes('first') || h === 'firstname')
@@ -246,7 +245,7 @@ export function LeadsContent() {
 
       const leadsToImport = []
       for (let i = 1; i < lines.length; i++) {
-        const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''))
+        const values = lines[i]?.split(',').map(v => v.trim().replace(/^"|"$/g, '')) ?? []
         const email = values[emailIndex]
         if (email && email.includes('@')) {
           leadsToImport.push({

@@ -16,7 +16,7 @@ interface MailboxRecord {
 
 // GET /api/warmup/[mailboxId] - Get warmup stats for a specific mailbox
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ mailboxId: string }> }
 ) {
   try {

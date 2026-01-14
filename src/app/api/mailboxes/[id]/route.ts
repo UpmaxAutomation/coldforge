@@ -22,7 +22,7 @@ interface MailboxRecord {
 
 // GET /api/mailboxes/[id] - Get a single mailbox
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -188,7 +188,7 @@ export async function PUT(
 
 // DELETE /api/mailboxes/[id] - Delete a mailbox
 export async function DELETE(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {

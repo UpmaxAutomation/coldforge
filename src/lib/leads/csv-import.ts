@@ -3,7 +3,6 @@
 import type {
   ColumnMapping,
   ImportResult,
-  ImportError,
   LeadImportConfig,
   LeadSource,
 } from './types'
@@ -21,12 +20,12 @@ export function parseCSV(csvString: string): { headers: string[]; rows: ParsedRo
   }
 
   // Parse header row
-  const headers = parseCSVLine(lines[0])
+  const headers = parseCSVLine(lines[0] ?? '')
 
   // Parse data rows
   const rows: ParsedRow[] = []
   for (let i = 1; i < lines.length; i++) {
-    const values = parseCSVLine(lines[i])
+    const values = parseCSVLine(lines[i] ?? '')
     if (values.length > 0) {
       const row: ParsedRow = {}
       headers.forEach((header, index) => {
@@ -244,6 +243,10 @@ export async function processImport(
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i]
+    if (!row) {
+      result.skipped++
+      continue
+    }
     const { valid, lead, error } = mapRowToLead(row, mapping, organizationId, config)
 
     if (!valid || !lead) {

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -13,7 +13,6 @@ import {
   Play,
   Pause,
   Settings,
-  Mail,
   Users,
   BarChart3,
   Eye,
@@ -27,7 +26,7 @@ import { SequenceEditor } from './sequence-editor'
 import { CampaignLeads } from './campaign-leads'
 import { CampaignSettings } from './campaign-settings'
 import { CampaignAnalytics } from './campaign-analytics'
-import type { Campaign, CampaignStats } from '@/lib/campaigns'
+import type { CampaignStats } from '@/lib/campaigns'
 
 interface CampaignData {
   id: string

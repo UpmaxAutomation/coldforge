@@ -2,7 +2,6 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useState } from 'react'
 import {
   LayoutDashboard,
   Send,
@@ -14,11 +13,9 @@ import {
   BarChart3,
   Settings,
   Zap,
-  ChevronLeft,
   ChevronRight,
   Sparkles,
   HelpCircle,
-  Bell,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -28,9 +25,6 @@ import {
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
   SidebarRail,
   useSidebar,
 } from '@/components/ui/sidebar'

@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createPortalSession } from '@/lib/billing'
 
 // POST /api/billing/portal - Create billing portal session
-export async function POST(request: NextRequest) {
+export async function POST(_request: NextRequest) {
   try {
     const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()

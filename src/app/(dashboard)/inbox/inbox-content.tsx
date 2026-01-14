@@ -7,7 +7,6 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
-  CheckCheck,
   ChevronDown,
   Clock,
   ExternalLink,
@@ -22,7 +21,6 @@ import {
   Search,
   Send,
   Sparkles,
-  Star,
   ThumbsDown,
   ThumbsUp,
   Trash2,
@@ -277,16 +275,20 @@ export default function InboxContent() {
           e.preventDefault()
           if (currentIndex < threads.length - 1) {
             const nextThread = threads[currentIndex + 1]
-            fetchThread(nextThread.id)
-            router.push(`/inbox?thread=${nextThread.id}`, { scroll: false })
+            if (nextThread) {
+              fetchThread(nextThread.id)
+              router.push(`/inbox?thread=${nextThread.id}`, { scroll: false })
+            }
           }
           break
         case 'k': // Previous
           e.preventDefault()
           if (currentIndex > 0) {
             const prevThread = threads[currentIndex - 1]
-            fetchThread(prevThread.id)
-            router.push(`/inbox?thread=${prevThread.id}`, { scroll: false })
+            if (prevThread) {
+              fetchThread(prevThread.id)
+              router.push(`/inbox?thread=${prevThread.id}`, { scroll: false })
+            }
           }
           break
         case 'r': // Reply
@@ -354,6 +356,7 @@ export default function InboxContent() {
   const selectAll = () => {
     setSelectedIds(new Set(threads.map(t => t.id)))
   }
+  void selectAll // Suppress unused warning - function may be used in future
 
   // Clear selection
   const clearSelection = () => {
@@ -538,9 +541,9 @@ export default function InboxContent() {
   // Get initials
   const getInitials = (name: string | null, email: string) => {
     if (name) {
-      return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+      return name.split(' ').map(n => n?.[0]).join('').toUpperCase().slice(0, 2)
     }
-    return email[0].toUpperCase()
+    return email?.[0]?.toUpperCase() || '?'
   }
 
   return (
@@ -892,7 +895,7 @@ export default function InboxContent() {
                 </div>
               ) : (
                 <div className="space-y-4 p-4">
-                  {selectedThread.timeline.map((message, index) => (
+                  {selectedThread.timeline.map((message) => (
                     <div
                       key={message.id}
                       className={cn(

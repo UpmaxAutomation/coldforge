@@ -87,10 +87,11 @@ export async function POST(
       : `Re: ${reply.subject}`
 
     // Generate message ID
-    const messageId = `<${Date.now()}.${Math.random().toString(36).slice(2)}@${mailbox.email.split('@')[1]}>`
+    const emailDomain = mailbox.email.split('@')[1] ?? 'unknown'
+    const messageId = `<${Date.now()}.${Math.random().toString(36).slice(2)}@${emailDomain}>`
 
     // Create email content
-    const fromName = [mailbox.first_name, mailbox.last_name].filter(Boolean).join(' ') || mailbox.email.split('@')[0]
+    const fromName = [mailbox.first_name, mailbox.last_name].filter(Boolean).join(' ') || mailbox.email.split('@')[0] || 'Unknown'
     const emailContent: EmailContent = {
       from: {
         email: mailbox.email,

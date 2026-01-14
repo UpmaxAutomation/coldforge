@@ -3,8 +3,8 @@ export * from './types'
 export * from './google-workspace'
 export * from './microsoft-365'
 
-import { GoogleWorkspaceProvider, createGoogleWorkspaceClient } from './google-workspace'
-import { Microsoft365Provider, createMicrosoft365Client } from './microsoft-365'
+import { createGoogleWorkspaceClient } from './google-workspace'
+import { createMicrosoft365Client } from './microsoft-365'
 import type { MailboxProviderClient, MailboxProviderType, MailboxProviderConfig, MailboxConfig } from './types'
 
 // Factory to create mailbox provider clients
@@ -158,8 +158,8 @@ const LAST_NAMES = [
 
 export function generateRandomName(): { firstName: string; lastName: string } {
   return {
-    firstName: FIRST_NAMES[Math.floor(Math.random() * FIRST_NAMES.length)],
-    lastName: LAST_NAMES[Math.floor(Math.random() * LAST_NAMES.length)],
+    firstName: FIRST_NAMES[Math.floor(Math.random() * FIRST_NAMES.length)] ?? 'John',
+    lastName: LAST_NAMES[Math.floor(Math.random() * LAST_NAMES.length)] ?? 'Doe',
   }
 }
 

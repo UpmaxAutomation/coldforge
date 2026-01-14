@@ -20,12 +20,9 @@ import {
   User as UserIcon,
   CreditCard,
   HelpCircle,
-  Moon,
-  Sun,
   ChevronDown,
   Sparkles,
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
 
 interface UserNavProps {
   user: User
@@ -47,7 +44,7 @@ export function UserNav({ user }: UserNavProps) {
         .map((n: string) => n[0])
         .join('')
         .toUpperCase()
-    : user.email?.[0].toUpperCase() || '?'
+    : user.email?.[0]?.toUpperCase() || '?'
 
   const displayName = user.user_metadata?.full_name || 'User'
   const email = user.email || ''

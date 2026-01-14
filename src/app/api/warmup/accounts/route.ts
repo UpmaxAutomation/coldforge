@@ -1,6 +1,26 @@
-// @ts-nocheck - TODO: Add proper Supabase type inference
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import type { Tables } from '@/types/database'
+
+type WarmupEmail = Tables<'warmup_emails'>
+
+interface UserWithOrg {
+  organization_id: string | null
+}
+
+interface EmailAccountPartial {
+  id: string
+  email: string
+  display_name: string | null
+  provider: 'google' | 'microsoft' | 'smtp'
+  warmup_enabled: boolean
+  warmup_progress: number
+  health_score: number
+  status: 'active' | 'paused' | 'error' | 'warming'
+  daily_limit: number
+  sent_today: number
+  created_at: string
+}
 
 export interface WarmupAccount {
   id: string
@@ -31,22 +51,27 @@ export async function GET() {
     }
 
     // Get user's organization
-    const { data: profile } = await supabase
+    const profileResult = await supabase
       .from('users')
       .select('organization_id')
       .eq('id', user.id)
       .single()
+
+    const profile = profileResult.data as UserWithOrg | null
 
     if (!profile?.organization_id) {
       return NextResponse.json({ error: 'No organization found' }, { status: 400 })
     }
 
     // Get email accounts
-    const { data: accounts, error } = await supabase
+    const accountsResult = await supabase
       .from('email_accounts')
       .select('id, email, display_name, provider, warmup_enabled, warmup_progress, health_score, status, daily_limit, sent_today, created_at')
       .eq('organization_id', profile.organization_id)
       .order('created_at', { ascending: false })
+
+    const accounts = accountsResult.data as EmailAccountPartial[] | null
+    const error = accountsResult.error
 
     if (error) {
       throw error
@@ -59,14 +84,15 @@ export async function GET() {
     const accountsWithStats: WarmupAccount[] = await Promise.all(
       (accounts || []).map(async (account) => {
         // Get warmup emails sent from this account
-        const { data: sentEmails } = await supabase
+        const sentEmailsResult = await supabase
           .from('warmup_emails')
           .select('status')
           .eq('from_account_id', account.id)
           .gte('sent_at', sevenDaysAgo.toISOString())
 
+        const sentEmails = sentEmailsResult.data as Pick<WarmupEmail, 'status'>[] | null
+
         const totalSent = sentEmails?.length || 0
-        const replied = sentEmails?.filter(e => e.status === 'replied').length || 0
         const opened = sentEmails?.filter(e => e.status === 'opened' || e.status === 'replied').length || 0
 
         // Calculate inbox placement rate (simplified: based on opens/replies)

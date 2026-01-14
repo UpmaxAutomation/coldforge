@@ -4,7 +4,7 @@ const ALGORITHM = 'aes-256-gcm'
 const KEY_LENGTH = 32
 const IV_LENGTH = 16
 const AUTH_TAG_LENGTH = 16
-const SALT_LENGTH = 32
+// SALT_LENGTH = 32 (not currently used but documented for reference)
 
 function getKey(): Buffer {
   const secret = process.env.ENCRYPTION_SECRET
@@ -63,6 +63,6 @@ export function decryptObject<T extends object>(encryptedData: string): T {
 export function isEncrypted(value: string): boolean {
   const parts = value.split(':')
   return parts.length === 3 &&
-         parts[0].length === IV_LENGTH * 2 &&
-         parts[1].length === AUTH_TAG_LENGTH * 2
+         (parts[0]?.length ?? 0) === IV_LENGTH * 2 &&
+         (parts[1]?.length ?? 0) === AUTH_TAG_LENGTH * 2
 }

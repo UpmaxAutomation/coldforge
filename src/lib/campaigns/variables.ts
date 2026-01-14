@@ -54,8 +54,8 @@ export function processTemplate(
   const months = ['January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December']
 
-  result = result.replace(/\{\{day\}\}/gi, days[now.getDay()])
-  result = result.replace(/\{\{month\}\}/gi, months[now.getMonth()])
+  result = result.replace(/\{\{day\}\}/gi, days[now.getDay()] ?? '')
+  result = result.replace(/\{\{month\}\}/gi, months[now.getMonth()] ?? '')
   result = result.replace(/\{\{year\}\}/gi, now.getFullYear().toString())
 
   // Custom lead fields
@@ -215,9 +215,9 @@ export function previewTemplate(
 export function processSpintax(text: string): string {
   const spintaxRegex = /\{([^{}]+)\}/g
 
-  return text.replace(spintaxRegex, (match, content) => {
+  return text.replace(spintaxRegex, (_match, content) => {
     const options = content.split('|')
-    return options[Math.floor(Math.random() * options.length)]
+    return options[Math.floor(Math.random() * options.length)] ?? ''
   })
 }
 

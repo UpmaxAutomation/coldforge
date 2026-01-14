@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
             const config = mailboxConfigs.find(m => m.email === result.email)
 
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const { data: mailbox, error: dbError } = await (supabase.from('mailboxes') as any)
+            const { data: mailbox, error: _dbError } = await (supabase.from('mailboxes') as any)
               .insert({
                 email: result.email,
                 domain_id: domainId,

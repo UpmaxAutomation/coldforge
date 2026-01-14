@@ -4,14 +4,13 @@ import {
   PLANS,
   getUsageSummary,
   getRemainingQuota,
-  getOrCreateCustomer,
   listInvoices,
   listPaymentMethods,
   getUpcomingInvoice,
 } from '@/lib/billing'
 
 // GET /api/billing - Get billing overview
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()

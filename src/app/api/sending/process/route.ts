@@ -3,14 +3,10 @@ import { createClient } from '@/lib/supabase/server'
 import {
   isWithinScheduleWindow,
   isMailboxThrottled,
-  selectMailbox,
-  prioritizeJobs,
   prepareEmail,
   generateMessageId,
   type EmailJobStatus,
   type MailboxSendingState,
-  type ThrottleConfig,
-  type ScheduleWindow,
   DEFAULT_THROTTLE_CONFIG,
   DEFAULT_SCHEDULE_WINDOWS,
 } from '@/lib/sending'
@@ -293,14 +289,15 @@ export async function POST(request: NextRequest) {
         const body = processTemplate(variant.body, leadData, senderData)
 
         // Generate message ID
-        const domain = mailbox.email.split('@')[1]
+        const domain = mailbox.email.split('@')[1] ?? 'unknown'
         const messageId = generateMessageId(domain)
 
         // Prepare email content
         const trackingBaseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
         const unsubscribeUrl = `${trackingBaseUrl}/unsubscribe?lead=${job.lead_id}&campaign=${job.campaign_id}`
 
-        const emailContent = prepareEmail(
+        // Prepare email content (currently unused - will be used for actual sending)
+        void prepareEmail(
           {
             from: { email: mailbox.email, name: `${mailbox.first_name} ${mailbox.last_name}` },
             to: { email: lead.email, name: [lead.first_name, lead.last_name].filter(Boolean).join(' ') || undefined },

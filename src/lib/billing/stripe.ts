@@ -59,8 +59,9 @@ export async function getOrCreateCustomer(
     limit: 1,
   })
 
-  if (existingCustomers.data.length > 0) {
-    return existingCustomers.data[0]
+  const existingCustomer = existingCustomers.data[0]
+  if (existingCustomer) {
+    return existingCustomer
   }
 
   // Create new customer
@@ -137,11 +138,16 @@ export async function updateSubscription(
   newPriceId: string
 ): Promise<Stripe.Subscription> {
   const subscription = await stripe.subscriptions.retrieve(subscriptionId)
+  const firstItem = subscription.items.data[0]
+
+  if (!firstItem) {
+    throw new Error('Subscription has no items')
+  }
 
   return stripe.subscriptions.update(subscriptionId, {
     items: [
       {
-        id: subscription.items.data[0].id,
+        id: firstItem.id,
         price: newPriceId,
       },
     ],

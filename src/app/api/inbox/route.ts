@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { type ReplyCategory, type ReplySentiment, type ReplyStatus } from '@/lib/replies'
+import {
+  listInboxQuerySchema,
+  inboxBulkActionSchema,
+} from '@/lib/schemas'
 
 interface ThreadWithLatestReply {
   id: string
@@ -47,13 +51,20 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
     }
 
+    // Parse and validate query parameters
     const searchParams = request.nextUrl.searchParams
-    const page = parseInt(searchParams.get('page') || '1')
-    const limit = parseInt(searchParams.get('limit') || '50')
-    const category = searchParams.get('category') as ReplyCategory | null
-    const status = searchParams.get('status') as 'active' | 'resolved' | 'archived' | null
-    const search = searchParams.get('search')
-    const unreadOnly = searchParams.get('unreadOnly') === 'true'
+    const queryResult = listInboxQuerySchema.safeParse({
+      page: searchParams.get('page'),
+      limit: searchParams.get('limit'),
+      category: searchParams.get('category'),
+      status: searchParams.get('status'),
+      search: searchParams.get('search'),
+      unreadOnly: searchParams.get('unreadOnly'),
+    })
+
+    const { page, limit, category, status, search, unreadOnly } = queryResult.success
+      ? queryResult.data
+      : { page: 1, limit: 50, category: undefined, status: undefined, search: undefined, unreadOnly: false }
 
     // Build query for threads with joins
     let query = supabase
@@ -218,19 +229,15 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { action, threadIds, replyIds } = body as {
-      action: 'mark_read' | 'mark_unread' | 'archive' | 'resolve' | 'unarchive'
-      threadIds?: string[]
-      replyIds?: string[]
+
+    // Validate request body with Zod schema
+    const validationResult = inboxBulkActionSchema.safeParse(body)
+    if (!validationResult.success) {
+      const errorMessage = validationResult.error.issues[0]?.message || 'Invalid request body'
+      return NextResponse.json({ error: errorMessage }, { status: 400 })
     }
 
-    if (!action) {
-      return NextResponse.json({ error: 'Action is required' }, { status: 400 })
-    }
-
-    if (!threadIds?.length && !replyIds?.length) {
-      return NextResponse.json({ error: 'Thread IDs or Reply IDs are required' }, { status: 400 })
-    }
+    const { action, threadIds, replyIds } = validationResult.data
 
     const now = new Date().toISOString()
 

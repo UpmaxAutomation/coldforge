@@ -278,7 +278,7 @@ export class GoogleWorkspaceProvider implements MailboxProviderClient {
     }
   }
 
-  async getSendingQuota(email: string): Promise<MailboxQuota | null> {
+  async getSendingQuota(_email: string): Promise<MailboxQuota | null> {
     // Default Google Workspace limits
     return {
       used: 0,

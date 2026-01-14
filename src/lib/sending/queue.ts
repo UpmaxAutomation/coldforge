@@ -2,18 +2,13 @@
 
 import type {
   EmailJob,
-  EmailJobStatus,
   ThrottleConfig,
   MailboxSendingState,
   ScheduleWindow,
-  DEFAULT_THROTTLE_CONFIG,
 } from './types'
 
-interface QueueOptions {
-  throttleConfig?: ThrottleConfig
-  scheduleWindows?: ScheduleWindow[]
-  timezone?: string
-}
+// QueueOptions interface for type reference
+// interface QueueOptions { throttleConfig?: ThrottleConfig; ... }
 
 // Check if current time is within schedule window
 export function isWithinScheduleWindow(
@@ -219,7 +214,7 @@ export function selectMailbox(
     return bHeadroom - aHeadroom
   })
 
-  return availableMailboxes[0]
+  return availableMailboxes[0] ?? null
 }
 
 // Distribute jobs across mailboxes

@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 
 // GET /api/leads/[id] - Get single lead
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -161,7 +161,7 @@ export async function PATCH(
 
 // DELETE /api/leads/[id] - Delete lead
 export async function DELETE(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {

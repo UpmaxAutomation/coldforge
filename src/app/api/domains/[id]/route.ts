@@ -27,7 +27,7 @@ interface DomainResponse {
 }
 
 // GET /api/domains/[id] - Get a single domain
-export async function GET(request: NextRequest, context: RouteContext) {
+export async function GET(_request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params
     const supabase = await createClient()
@@ -103,7 +103,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 }
 
 // DELETE /api/domains/[id] - Delete a domain
-export async function DELETE(request: NextRequest, context: RouteContext) {
+export async function DELETE(_request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params
     const supabase = await createClient()
@@ -133,7 +133,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
 }
 
 // POST /api/domains/[id] - Verify/refresh DNS health
-export async function POST(request: NextRequest, context: RouteContext) {
+export async function POST(_request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params
     const supabase = await createClient()

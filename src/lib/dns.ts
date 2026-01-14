@@ -144,10 +144,11 @@ async function checkDmarc(domain: string): Promise<DnsHealthResult['dmarc']> {
 
       // Extract policy
       const policyMatch = dmarcRecord.match(/p=(\w+)/)
-      if (policyMatch) {
-        result.policy = policyMatch[1]
+      const extractedPolicy = policyMatch?.[1] ?? null
+      if (extractedPolicy) {
+        result.policy = extractedPolicy
 
-        if (['none', 'quarantine', 'reject'].includes(result.policy)) {
+        if (['none', 'quarantine', 'reject'].includes(extractedPolicy)) {
           result.valid = true
 
           if (result.policy === 'none') {

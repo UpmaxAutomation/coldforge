@@ -36,7 +36,7 @@ interface EmailAccountFull extends EmailAccountResponse {
 }
 
 // GET /api/email-accounts/[id] - Get a single email account
-export async function GET(request: NextRequest, context: RouteContext) {
+export async function GET(_request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params
     const supabase = await createClient()
@@ -146,7 +146,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 }
 
 // DELETE /api/email-accounts/[id] - Delete an email account
-export async function DELETE(request: NextRequest, context: RouteContext) {
+export async function DELETE(_request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params
     const supabase = await createClient()
@@ -176,7 +176,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
 }
 
 // POST /api/email-accounts/[id]/test - Test connection
-export async function POST(request: NextRequest, context: RouteContext) {
+export async function POST(_request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params
     const supabase = await createClient()

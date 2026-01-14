@@ -11,6 +11,7 @@ interface EventCount {
   event_type: EmailEventType
   count: number
 }
+void (0 as unknown as EventCount) // Suppress unused warning - interface may be used in future
 
 // GET /api/deliverability - Get deliverability metrics
 export async function GET(request: NextRequest) {
@@ -79,8 +80,8 @@ export async function GET(request: NextRequest) {
 
     events?.forEach(e => {
       const eventType = (e as { event_type: string }).event_type
-      if (eventType in eventCounts) {
-        eventCounts[eventType]++
+      if (eventType in eventCounts && eventCounts[eventType] !== undefined) {
+        eventCounts[eventType] = (eventCounts[eventType] ?? 0) + 1
       }
     })
 
@@ -101,14 +102,22 @@ export async function GET(request: NextRequest) {
     eventCounts.sent = sentCount || 0
 
     // Calculate deliverability score
+    const sent = eventCounts.sent ?? 0
+    const delivered = eventCounts.delivered ?? (sent - (eventCounts.bounced ?? 0) - (eventCounts.soft_bounced ?? 0))
+    const opened = eventCounts.opened ?? 0
+    const clicked = eventCounts.clicked ?? 0
+    const bounced = (eventCounts.bounced ?? 0) + (eventCounts.soft_bounced ?? 0)
+    const complained = eventCounts.complained ?? 0
+    const unsubscribed = eventCounts.unsubscribed ?? 0
+
     const score = calculateDeliverabilityScore(
-      eventCounts.sent,
-      eventCounts.delivered || eventCounts.sent - eventCounts.bounced - eventCounts.soft_bounced,
-      eventCounts.opened,
-      eventCounts.clicked,
-      eventCounts.bounced + eventCounts.soft_bounced,
-      eventCounts.complained,
-      eventCounts.unsubscribed
+      sent,
+      delivered,
+      opened,
+      clicked,
+      bounced,
+      complained,
+      unsubscribed
     )
 
     // Get mailbox health
@@ -143,8 +152,8 @@ export async function GET(request: NextRequest) {
 
       mailboxEvents?.forEach(e => {
         const et = (e as { event_type: string }).event_type
-        if (et === 'bounced' || et === 'soft_bounced') mbCounts.bounced++
-        if (et === 'complained') mbCounts.complained++
+        if (et === 'bounced' || et === 'soft_bounced') mbCounts.bounced = (mbCounts.bounced ?? 0) + 1
+        if (et === 'complained') mbCounts.complained = (mbCounts.complained ?? 0) + 1
       })
 
       // Get sent count for mailbox
@@ -157,14 +166,18 @@ export async function GET(request: NextRequest) {
 
       mbCounts.sent = mbSentCount || 0
 
-      const deliveryRate = mbCounts.sent > 0
-        ? ((mbCounts.sent - mbCounts.bounced) / mbCounts.sent) * 100
+      const mbSent = mbCounts.sent ?? 0
+      const mbBounced = mbCounts.bounced ?? 0
+      const mbComplained = mbCounts.complained ?? 0
+
+      const deliveryRate = mbSent > 0
+        ? ((mbSent - mbBounced) / mbSent) * 100
         : 100
-      const bounceRate = mbCounts.sent > 0
-        ? (mbCounts.bounced / mbCounts.sent) * 100
+      const bounceRate = mbSent > 0
+        ? (mbBounced / mbSent) * 100
         : 0
-      const spamRate = mbCounts.sent > 0
-        ? (mbCounts.complained / mbCounts.sent) * 100
+      const spamRate = mbSent > 0
+        ? (mbComplained / mbSent) * 100
         : 0
 
       let mbScore = 100
@@ -183,8 +196,8 @@ export async function GET(request: NextRequest) {
         deliveryRate: Math.round(deliveryRate * 10) / 10,
         bounceRate: Math.round(bounceRate * 10) / 10,
         spamRate: Math.round(spamRate * 100) / 100,
-        recentBounces: mbCounts.bounced,
-        recentSpamComplaints: mbCounts.complained,
+        recentBounces: mbBounced,
+        recentSpamComplaints: mbComplained,
         lastChecked: new Date().toISOString(),
         status,
         recommendations: [],
@@ -203,15 +216,15 @@ export async function GET(request: NextRequest) {
         end: now.toISOString(),
       },
       metrics: {
-        sent: eventCounts.sent,
-        delivered: eventCounts.delivered || eventCounts.sent - eventCounts.bounced - eventCounts.soft_bounced,
-        opened: eventCounts.opened,
-        clicked: eventCounts.clicked,
-        bounced: eventCounts.bounced + eventCounts.soft_bounced,
-        hardBounced: eventCounts.bounced,
-        softBounced: eventCounts.soft_bounced,
-        spamComplaints: eventCounts.complained,
-        unsubscribes: eventCounts.unsubscribed,
+        sent,
+        delivered,
+        opened,
+        clicked,
+        bounced,
+        hardBounced: eventCounts.bounced ?? 0,
+        softBounced: eventCounts.soft_bounced ?? 0,
+        spamComplaints: complained,
+        unsubscribes: unsubscribed,
       },
       score,
       mailboxHealth,

@@ -278,7 +278,13 @@ export function DnsSetupGuide({ open, onClose, domain, onVerify }: DnsSetupGuide
   const [activeTab, setActiveTab] = useState('setup')
 
   const dnsRecords = getDnsRecords(domain.domain)
-  const instructions = registrarInstructions[selectedRegistrar] || registrarInstructions.other
+  const instructions = registrarInstructions[selectedRegistrar] ?? registrarInstructions.other ?? {
+    name: 'Unknown',
+    loginUrl: '',
+    dnsPath: '',
+    steps: [],
+    tips: [],
+  }
 
   useEffect(() => {
     if (open) {

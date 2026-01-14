@@ -121,7 +121,7 @@ export async function GET(
     const dailyStats: Record<string, { sent: number; opened: number; clicked: number; replied: number }> = {}
 
     sentEmails?.forEach((email) => {
-      const date = new Date(email.sent_at).toISOString().split('T')[0]
+      const date = new Date(email.sent_at).toISOString().split('T')[0] || ''
       if (!dailyStats[date]) {
         dailyStats[date] = { sent: 0, opened: 0, clicked: 0, replied: 0 }
       }
