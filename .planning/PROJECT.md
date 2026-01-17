@@ -1,4 +1,4 @@
-# InstantScale - Cold Email Outreach Platform
+# ColdForge - Cold Email Outreach Platform
 
 ## What This Is
 

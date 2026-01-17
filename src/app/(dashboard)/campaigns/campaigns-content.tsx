@@ -101,7 +101,7 @@ export function CampaignsContent() {
         toast.success('Campaign created successfully')
       } else {
         const error = await response.json()
-        toast.error(error.error || 'Failed to create campaign')
+        toast.error(error.error?.message || 'Failed to create campaign')
       }
     } catch (error) {
       console.error('Failed to create campaign:', error)

@@ -152,7 +152,7 @@ export function LeadsContent() {
         toast.success('Lead added successfully')
       } else {
         const error = await response.json()
-        toast.error(error.error || 'Failed to add lead')
+        toast.error(error.error?.message || 'Failed to add lead')
       }
     } catch (error) {
       console.error('Failed to add lead:', error)
@@ -204,7 +204,7 @@ export function LeadsContent() {
         toast.success('List created successfully')
       } else {
         const error = await response.json()
-        toast.error(error.error || 'Failed to create list')
+        toast.error(error.error?.message || 'Failed to create list')
       }
     } catch (error) {
       console.error('Failed to create list:', error)
@@ -277,7 +277,7 @@ export function LeadsContent() {
         fetchData()
       } else {
         const error = await response.json()
-        toast.error(error.error || 'Failed to import leads')
+        toast.error(error.error?.message || 'Failed to import leads')
       }
     } catch (error) {
       console.error('Failed to import leads:', error)

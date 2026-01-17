@@ -102,7 +102,7 @@ export function CampaignSettings({ campaignId, settings: initialSettings, onUpda
         toast.success('Settings saved successfully')
       } else {
         const error = await response.json()
-        toast.error(error.error || 'Failed to save settings')
+        toast.error(error.error?.message || 'Failed to save settings')
       }
     } catch (error) {
       console.error('Failed to save settings:', error)
@@ -219,7 +219,7 @@ export function CampaignSettings({ campaignId, settings: initialSettings, onUpda
             <div>
               <Label>Skip Weekends</Label>
               <p className="text-xs text-muted-foreground">
-                Don't send emails on Saturday and Sunday
+                Don&apos;t send emails on Saturday and Sunday
               </p>
             </div>
             <Switch
@@ -401,7 +401,7 @@ export function CampaignSettings({ campaignId, settings: initialSettings, onUpda
                       How A/B Testing Works
                     </p>
                     <p className="text-blue-700 dark:text-blue-300 mt-1">
-                      When you add multiple variants to a step, we'll split your leads evenly and
+                      When you add multiple variants to a step, we&apos;ll split your leads evenly and
                       send each variant to a portion. After the test duration, the winning variant
                       (based on your criteria) will be sent to remaining leads.
                     </p>

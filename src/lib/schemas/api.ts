@@ -743,3 +743,28 @@ export type CheckoutRequest = z.infer<typeof checkoutRequestSchema>
 export type ApiError = z.infer<typeof apiErrorSchema>
 export type ApiSuccess = z.infer<typeof apiSuccessSchema>
 export type PaginationResponse = z.infer<typeof paginationResponseSchema>
+
+// ============================================================================
+// Inbox Sync Schemas
+// ============================================================================
+
+/** POST /api/inbox/sync request schema */
+export const inboxSyncRequestSchema = z.object({
+  accountIds: z.array(uuidSchema).optional(),
+  syncAll: z.boolean().default(false),
+  since: z.string().datetime().optional(),
+  categorize: z.boolean().default(true),
+}).refine(
+  data => data.syncAll || (data.accountIds && data.accountIds.length > 0),
+  { message: 'Either specify accountIds or set syncAll to true' }
+)
+
+/** GET /api/inbox/stats query params */
+export const inboxStatsQuerySchema = z.object({
+  accountId: uuidSchema.optional(),
+  campaignId: uuidSchema.optional(),
+  period: z.enum(['24h', '7d', '30d', '90d']).default('7d'),
+})
+
+export type InboxSyncRequest = z.infer<typeof inboxSyncRequestSchema>
+export type InboxStatsQuery = z.infer<typeof inboxStatsQuerySchema>

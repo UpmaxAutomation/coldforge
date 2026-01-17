@@ -14,10 +14,10 @@ interface MailboxRecord {
   status: string
 }
 
-// GET /api/warmup/[mailboxId] - Get warmup stats for a specific mailbox
+// GET /api/warmup/[accountId]/mailbox - Get warmup stats for a specific mailbox
 export async function GET(
   _request: NextRequest,
-  { params }: { params: Promise<{ mailboxId: string }> }
+  { params }: { params: Promise<{ accountId: string }> }
 ) {
   try {
     const supabase = await createClient()
@@ -27,7 +27,7 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { mailboxId } = await params
+    const { accountId: mailboxId } = await params
 
     // Get user's organization
     const { data: profile } = await supabase
@@ -101,10 +101,10 @@ export async function GET(
   }
 }
 
-// PUT /api/warmup/[mailboxId] - Update warmup settings for a mailbox
+// PUT /api/warmup/[accountId]/mailbox - Update warmup settings for a mailbox
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ mailboxId: string }> }
+  { params }: { params: Promise<{ accountId: string }> }
 ) {
   try {
     const supabase = await createClient()
@@ -114,7 +114,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { mailboxId } = await params
+    const { accountId: mailboxId } = await params
     const body = await request.json()
     const { warmupEnabled, warmupStage, resetProgress } = body
 

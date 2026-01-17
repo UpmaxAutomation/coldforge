@@ -1,4 +1,5 @@
 export * from './database'
+export * from './inbox'
 
 // App-level types
 export interface User {

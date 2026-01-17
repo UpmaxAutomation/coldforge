@@ -85,7 +85,7 @@ export default function DashboardPage() {
         const warmingAccounts = accounts.filter((a: { warmup_enabled: boolean }) => a.warmup_enabled).length
 
         // Calculate emails sent today and reply rate from campaign stats
-        let emailsSentToday = 0
+        const emailsSentToday = 0
         let totalReplies = 0
         let totalSent = 0
 

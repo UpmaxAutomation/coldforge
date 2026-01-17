@@ -396,7 +396,7 @@ export function CampaignAnalytics({ campaignId, stats }: CampaignAnalyticsProps)
                     Low Open Rate
                   </p>
                   <p className="text-sm text-yellow-700 dark:text-yellow-300">
-                    Try A/B testing different subject lines. Personalization with the recipient's
+                    Try A/B testing different subject lines. Personalization with the recipient&apos;s
                     name or company can boost opens by 26%.
                   </p>
                 </div>

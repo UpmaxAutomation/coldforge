@@ -96,7 +96,7 @@ export default function CampaignDetailPage() {
         toast.success(`Campaign ${status === 'active' ? 'started' : 'paused'}`)
       } else {
         const error = await response.json()
-        toast.error(error.error || 'Failed to update campaign')
+        toast.error(error.error?.message || 'Failed to update campaign')
       }
     } catch (error) {
       console.error('Failed to update campaign status:', error)
@@ -136,7 +136,7 @@ export default function CampaignDetailPage() {
       <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
         <AlertCircle className="h-16 w-16 text-muted-foreground" />
         <h2 className="text-xl font-semibold">Campaign not found</h2>
-        <p className="text-muted-foreground">The campaign you're looking for doesn't exist.</p>
+        <p className="text-muted-foreground">The campaign you&apos;re looking for doesn&apos;t exist.</p>
         <Button asChild>
           <Link href="/campaigns">Go Back to Campaigns</Link>
         </Button>

@@ -479,8 +479,12 @@ export type Database = {
           organization_id: string | null
           sent_email_id: string | null
           email_account_id: string | null
+          mailbox_id: string | null
           lead_id: string | null
+          campaign_id: string | null
+          thread_id: string | null
           from_email: string
+          from_name: string | null
           to_email: string
           subject: string | null
           body_html: string | null
@@ -488,17 +492,27 @@ export type Database = {
           message_id: string | null
           in_reply_to: string | null
           category: 'interested' | 'not_interested' | 'out_of_office' | 'unsubscribe' | 'uncategorized'
+          sentiment: 'positive' | 'neutral' | 'negative' | null
+          confidence: number | null
+          status: 'received' | 'unread' | 'read' | 'replied' | 'archived' | 'snoozed'
           is_read: boolean
+          is_auto_detected: boolean
+          snoozed_until: string | null
           received_at: string
           created_at: string
+          updated_at: string
         }
         Insert: {
           id?: string
           organization_id?: string | null
           sent_email_id?: string | null
           email_account_id?: string | null
+          mailbox_id?: string | null
           lead_id?: string | null
+          campaign_id?: string | null
+          thread_id?: string | null
           from_email: string
+          from_name?: string | null
           to_email: string
           subject?: string | null
           body_html?: string | null
@@ -506,17 +520,27 @@ export type Database = {
           message_id?: string | null
           in_reply_to?: string | null
           category?: 'interested' | 'not_interested' | 'out_of_office' | 'unsubscribe' | 'uncategorized'
+          sentiment?: 'positive' | 'neutral' | 'negative' | null
+          confidence?: number | null
+          status?: 'received' | 'unread' | 'read' | 'replied' | 'archived' | 'snoozed'
           is_read?: boolean
+          is_auto_detected?: boolean
+          snoozed_until?: string | null
           received_at?: string
           created_at?: string
+          updated_at?: string
         }
         Update: {
           id?: string
           organization_id?: string | null
           sent_email_id?: string | null
           email_account_id?: string | null
+          mailbox_id?: string | null
           lead_id?: string | null
+          campaign_id?: string | null
+          thread_id?: string | null
           from_email?: string
+          from_name?: string | null
           to_email?: string
           subject?: string | null
           body_html?: string | null
@@ -524,9 +548,15 @@ export type Database = {
           message_id?: string | null
           in_reply_to?: string | null
           category?: 'interested' | 'not_interested' | 'out_of_office' | 'unsubscribe' | 'uncategorized'
+          sentiment?: 'positive' | 'neutral' | 'negative' | null
+          confidence?: number | null
+          status?: 'received' | 'unread' | 'read' | 'replied' | 'archived' | 'snoozed'
           is_read?: boolean
+          is_auto_detected?: boolean
+          snoozed_until?: string | null
           received_at?: string
           created_at?: string
+          updated_at?: string
         }
       }
       warmup_emails: {
@@ -562,6 +592,269 @@ export type Database = {
           sent_at?: string
           opened_at?: string | null
           replied_at?: string | null
+        }
+      }
+      sync_states: {
+        Row: {
+          id: string
+          account_id: string
+          last_sync_at: string | null
+          last_history_id: string | null
+          last_delta_link: string | null
+          last_uid: number | null
+          sync_cursor: string | null
+          status: 'idle' | 'syncing' | 'completed' | 'error'
+          error_message: string | null
+          error_count: number
+          messages_total: number
+          messages_synced: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          account_id: string
+          last_sync_at?: string | null
+          last_history_id?: string | null
+          last_delta_link?: string | null
+          last_uid?: number | null
+          sync_cursor?: string | null
+          status?: 'idle' | 'syncing' | 'completed' | 'error'
+          error_message?: string | null
+          error_count?: number
+          messages_total?: number
+          messages_synced?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          account_id?: string
+          last_sync_at?: string | null
+          last_history_id?: string | null
+          last_delta_link?: string | null
+          last_uid?: number | null
+          sync_cursor?: string | null
+          status?: 'idle' | 'syncing' | 'completed' | 'error'
+          error_message?: string | null
+          error_count?: number
+          messages_total?: number
+          messages_synced?: number
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      inbox_messages: {
+        Row: {
+          id: string
+          external_id: string
+          account_id: string
+          organization_id: string
+          thread_id: string
+          message_id: string
+          in_reply_to: string | null
+          references: string[]
+          from_email: string
+          from_name: string | null
+          to_emails: string[]
+          cc_emails: string[]
+          subject: string
+          body_text: string
+          body_html: string | null
+          snippet: string
+          is_read: boolean
+          direction: 'inbound' | 'outbound'
+          category: string
+          sentiment: string
+          category_confidence: number
+          has_attachments: boolean
+          provider: 'google' | 'microsoft' | 'smtp'
+          received_at: string
+          internal_date: string
+          raw_data: Json
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          external_id: string
+          account_id: string
+          organization_id: string
+          thread_id: string
+          message_id: string
+          in_reply_to?: string | null
+          references?: string[]
+          from_email: string
+          from_name?: string | null
+          to_emails?: string[]
+          cc_emails?: string[]
+          subject: string
+          body_text: string
+          body_html?: string | null
+          snippet?: string
+          is_read?: boolean
+          direction: 'inbound' | 'outbound'
+          category?: string
+          sentiment?: string
+          category_confidence?: number
+          has_attachments?: boolean
+          provider: 'google' | 'microsoft' | 'smtp'
+          received_at: string
+          internal_date: string
+          raw_data?: Json
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          external_id?: string
+          account_id?: string
+          organization_id?: string
+          thread_id?: string
+          message_id?: string
+          in_reply_to?: string | null
+          references?: string[]
+          from_email?: string
+          from_name?: string | null
+          to_emails?: string[]
+          cc_emails?: string[]
+          subject?: string
+          body_text?: string
+          body_html?: string | null
+          snippet?: string
+          is_read?: boolean
+          direction?: 'inbound' | 'outbound'
+          category?: string
+          sentiment?: string
+          category_confidence?: number
+          has_attachments?: boolean
+          provider?: 'google' | 'microsoft' | 'smtp'
+          received_at?: string
+          internal_date?: string
+          raw_data?: Json
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      threads: {
+        Row: {
+          id: string
+          organization_id: string
+          mailbox_id: string
+          campaign_id: string | null
+          lead_id: string | null
+          thread_external_id: string | null
+          subject: string
+          participant_email: string
+          participant_name: string | null
+          message_count: number
+          last_message_at: string
+          first_message_at: string
+          status: 'active' | 'resolved' | 'archived' | 'spam'
+          is_read: boolean
+          category: 'interested' | 'not_interested' | 'maybe' | 'out_of_office' | 'auto_reply' | 'bounced' | 'meeting_request' | 'uncategorized' | null
+          sentiment: 'positive' | 'neutral' | 'negative' | null
+          assigned_to: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          mailbox_id: string
+          campaign_id?: string | null
+          lead_id?: string | null
+          thread_external_id?: string | null
+          subject: string
+          participant_email: string
+          participant_name?: string | null
+          message_count?: number
+          last_message_at?: string
+          first_message_at?: string
+          status?: 'active' | 'resolved' | 'archived' | 'spam'
+          is_read?: boolean
+          category?: 'interested' | 'not_interested' | 'maybe' | 'out_of_office' | 'auto_reply' | 'bounced' | 'meeting_request' | 'uncategorized' | null
+          sentiment?: 'positive' | 'neutral' | 'negative' | null
+          assigned_to?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          mailbox_id?: string
+          campaign_id?: string | null
+          lead_id?: string | null
+          thread_external_id?: string | null
+          subject?: string
+          participant_email?: string
+          participant_name?: string | null
+          message_count?: number
+          last_message_at?: string
+          first_message_at?: string
+          status?: 'active' | 'resolved' | 'archived' | 'spam'
+          is_read?: boolean
+          category?: 'interested' | 'not_interested' | 'maybe' | 'out_of_office' | 'auto_reply' | 'bounced' | 'meeting_request' | 'uncategorized' | null
+          sentiment?: 'positive' | 'neutral' | 'negative' | null
+          assigned_to?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      thread_messages: {
+        Row: {
+          id: string
+          thread_id: string
+          message_id: string | null
+          in_reply_to: string | null
+          direction: 'inbound' | 'outbound'
+          from_email: string
+          from_name: string | null
+          to_email: string
+          subject: string | null
+          body_text: string | null
+          body_html: string | null
+          snippet: string | null
+          has_attachments: boolean
+          sent_at: string
+          received_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          thread_id: string
+          message_id?: string | null
+          in_reply_to?: string | null
+          direction?: 'inbound' | 'outbound'
+          from_email: string
+          from_name?: string | null
+          to_email: string
+          subject?: string | null
+          body_text?: string | null
+          body_html?: string | null
+          snippet?: string | null
+          has_attachments?: boolean
+          sent_at?: string
+          received_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          thread_id?: string
+          message_id?: string | null
+          in_reply_to?: string | null
+          direction?: 'inbound' | 'outbound'
+          from_email?: string
+          from_name?: string | null
+          to_email?: string
+          subject?: string | null
+          body_text?: string | null
+          body_html?: string | null
+          snippet?: string | null
+          has_attachments?: boolean
+          sent_at?: string
+          received_at?: string | null
+          created_at?: string
         }
       }
     }

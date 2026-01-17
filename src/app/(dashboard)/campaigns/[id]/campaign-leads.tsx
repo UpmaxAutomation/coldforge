@@ -143,7 +143,7 @@ export function CampaignLeads({ campaignId }: CampaignLeadsProps) {
         fetchLeads()
       } else {
         const error = await response.json()
-        toast.error(error.error || 'Failed to add leads')
+        toast.error(error.error?.message || 'Failed to add leads')
       }
     } catch (error) {
       console.error('Failed to add leads:', error)

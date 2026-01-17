@@ -316,7 +316,7 @@ export function SequenceEditor({ campaignId, isEditable }: SequenceEditorProps) 
         toast.success('Sequence saved successfully')
       } else {
         const error = await response.json()
-        toast.error(error.error || 'Failed to save sequence')
+        toast.error(error.error?.message || 'Failed to save sequence')
       }
     } catch (error) {
       console.error('Failed to save sequence:', error)

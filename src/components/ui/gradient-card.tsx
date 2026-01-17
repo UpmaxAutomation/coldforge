@@ -89,7 +89,7 @@ const GradientCard = React.forwardRef<HTMLDivElement, GradientCardProps>(
 GradientCard.displayName = 'GradientCard'
 
 // Gradient Card Header
-interface GradientCardHeaderProps extends React.HTMLAttributes<HTMLDivElement> {}
+type GradientCardHeaderProps = React.HTMLAttributes<HTMLDivElement>
 
 const GradientCardHeader = React.forwardRef<HTMLDivElement, GradientCardHeaderProps>(
   ({ className, ...props }, ref) => {
@@ -129,7 +129,7 @@ const GradientCardTitle = React.forwardRef<HTMLHeadingElement, GradientCardTitle
 GradientCardTitle.displayName = 'GradientCardTitle'
 
 // Gradient Card Description
-interface GradientCardDescriptionProps extends React.HTMLAttributes<HTMLParagraphElement> {}
+type GradientCardDescriptionProps = React.HTMLAttributes<HTMLParagraphElement>
 
 const GradientCardDescription = React.forwardRef<HTMLParagraphElement, GradientCardDescriptionProps>(
   ({ className, ...props }, ref) => {
@@ -145,7 +145,7 @@ const GradientCardDescription = React.forwardRef<HTMLParagraphElement, GradientC
 GradientCardDescription.displayName = 'GradientCardDescription'
 
 // Gradient Card Content
-interface GradientCardContentProps extends React.HTMLAttributes<HTMLDivElement> {}
+type GradientCardContentProps = React.HTMLAttributes<HTMLDivElement>
 
 const GradientCardContent = React.forwardRef<HTMLDivElement, GradientCardContentProps>(
   ({ className, ...props }, ref) => {
@@ -155,7 +155,7 @@ const GradientCardContent = React.forwardRef<HTMLDivElement, GradientCardContent
 GradientCardContent.displayName = 'GradientCardContent'
 
 // Gradient Card Footer
-interface GradientCardFooterProps extends React.HTMLAttributes<HTMLDivElement> {}
+type GradientCardFooterProps = React.HTMLAttributes<HTMLDivElement>
 
 const GradientCardFooter = React.forwardRef<HTMLDivElement, GradientCardFooterProps>(
   ({ className, ...props }, ref) => {

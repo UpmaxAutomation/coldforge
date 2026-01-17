@@ -8,6 +8,7 @@ export const QUEUES = {
   CAMPAIGN: 'campaign',
   WEBHOOK: 'webhook',
   ANALYTICS: 'analytics',
+  INBOX_CATEGORIZATION: 'inbox-categorization',
 } as const
 
 export type QueueName = keyof typeof QUEUES
