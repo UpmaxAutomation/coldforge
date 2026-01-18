@@ -1,67 +1,96 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
-import { verifyWebhookSignature } from '@/lib/billing'
-import Stripe from 'stripe'
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { verifyWebhookSignature } from '@/lib/billing';
+import { syncStripeInvoice } from '@/lib/billing/invoices';
+import { purchaseCredits } from '@/lib/billing/credits';
+import Stripe from 'stripe';
 
 // POST /api/webhooks/stripe - Handle Stripe webhooks
 export async function POST(request: NextRequest) {
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
   if (!webhookSecret) {
-    console.error('Stripe webhook secret not configured')
-    return NextResponse.json({ error: 'Webhook not configured' }, { status: 500 })
+    console.error('Stripe webhook secret not configured');
+    return NextResponse.json({ error: 'Webhook not configured' }, { status: 500 });
   }
 
-  const signature = request.headers.get('stripe-signature')
+  const signature = request.headers.get('stripe-signature');
 
   if (!signature) {
-    return NextResponse.json({ error: 'Missing signature' }, { status: 400 })
+    return NextResponse.json({ error: 'Missing signature' }, { status: 400 });
   }
 
-  let event: Stripe.Event
+  let event: Stripe.Event;
 
   try {
-    const body = await request.text()
-    event = verifyWebhookSignature(body, signature, webhookSecret)
+    const body = await request.text();
+    event = verifyWebhookSignature(body, signature, webhookSecret);
   } catch (err) {
-    console.error('Webhook signature verification failed:', err)
-    return NextResponse.json({ error: 'Invalid signature' }, { status: 400 })
+    console.error('Webhook signature verification failed:', err);
+    return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
   }
 
-  const supabase = await createClient()
+  const supabase = await createClient();
+  const adminClient = createAdminClient();
 
   try {
     switch (event.type) {
       case 'checkout.session.completed': {
-        const session = event.data.object as Stripe.Checkout.Session
+        const session = event.data.object as Stripe.Checkout.Session;
+        const metadata = session.metadata || {};
+
+        // Handle credit purchases
+        if (metadata.type === 'credits' && metadata.packageId && metadata.workspaceId) {
+          await purchaseCredits(
+            metadata.workspaceId,
+            metadata.packageId,
+            session.id
+          );
+          await recordBillingEvent(supabase, metadata.workspaceId, 'credits_purchased', {
+            sessionId: session.id,
+            packageId: metadata.packageId,
+          });
+          break;
+        }
 
         if (session.mode === 'subscription' && session.subscription) {
           const subscriptionId = typeof session.subscription === 'string'
             ? session.subscription
-            : session.subscription.id
+            : session.subscription.id;
 
-          const organizationId = session.metadata?.organizationId
-          const planTier = session.metadata?.planTier
+          const organizationId = metadata.organizationId || metadata.workspaceId;
+          const planTier = metadata.planTier || metadata.planId;
 
           if (organizationId && planTier) {
             // Create subscription record
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            await (supabase.from('subscriptions') as any)
+            await adminClient.from('workspace_subscriptions')
               .upsert({
-                organization_id: organizationId,
+                workspace_id: organizationId,
                 plan_id: planTier,
                 stripe_subscription_id: subscriptionId,
-                stripe_customer_id: session.customer as string,
                 status: 'active',
-                billing_interval: session.metadata?.interval || 'monthly',
                 current_period_start: new Date().toISOString(),
                 current_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
               }, {
-                onConflict: 'organization_id',
-              })
+                onConflict: 'workspace_id',
+              });
+
+            // Ensure Stripe customer mapping exists
+            await adminClient.from('stripe_customers').upsert({
+              workspace_id: organizationId,
+              stripe_customer_id: session.customer as string,
+            }, {
+              onConflict: 'workspace_id',
+            });
+
+            await recordBillingEvent(supabase, organizationId, 'subscription_created', {
+              subscriptionId,
+              planId: planTier,
+            });
           }
         }
-        break
+        break;
       }
 
       case 'customer.subscription.updated': {
@@ -74,8 +103,7 @@ export async function POST(request: NextRequest) {
         const periodEnd = item?.current_period_end || Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60
 
         if (organizationId) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (supabase.from('subscriptions') as any)
+          await supabase.from('subscriptions')
             .update({
               status: subscription.status,
               current_period_start: new Date(periodStart * 1000).toISOString(),
@@ -94,8 +122,7 @@ export async function POST(request: NextRequest) {
       case 'customer.subscription.deleted': {
         const subscription = event.data.object as Stripe.Subscription
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (supabase.from('subscriptions') as any)
+        await supabase.from('subscriptions')
           .update({
             status: 'canceled',
             canceled_at: new Date().toISOString(),
@@ -105,76 +132,140 @@ export async function POST(request: NextRequest) {
         break
       }
 
+      case 'invoice.created':
+      case 'invoice.updated':
+      case 'invoice.finalized':
       case 'invoice.paid': {
-        const invoice = event.data.object as Stripe.Invoice
+        const invoice = event.data.object as Stripe.Invoice;
+        const workspaceId = await getWorkspaceForCustomer(supabase, invoice.customer as string);
 
-        // Get subscription ID from line items
-        const subscriptionId = invoice.lines?.data?.[0]?.subscription || null
-        const periodStart = invoice.lines?.data?.[0]?.period?.start
-        const periodEnd = invoice.lines?.data?.[0]?.period?.end
+        if (workspaceId) {
+          // Sync invoice using our new invoice system
+          await syncStripeInvoice(invoice.id, workspaceId);
 
-        // Record invoice
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (supabase.from('invoices') as any)
-          .upsert({
-            stripe_invoice_id: invoice.id,
-            stripe_subscription_id: subscriptionId,
-            stripe_customer_id: invoice.customer as string,
-            status: 'paid',
-            amount_due: invoice.amount_due,
-            amount_paid: invoice.amount_paid,
-            currency: invoice.currency,
-            period_start: periodStart
-              ? new Date(periodStart * 1000).toISOString()
-              : null,
-            period_end: periodEnd
-              ? new Date(periodEnd * 1000).toISOString()
-              : null,
-            pdf_url: invoice.invoice_pdf,
-            hosted_invoice_url: invoice.hosted_invoice_url,
-            paid_at: new Date().toISOString(),
-          }, {
-            onConflict: 'stripe_invoice_id',
-          })
-        break
+          if (event.type === 'invoice.paid') {
+            await recordBillingEvent(supabase, workspaceId, 'invoice_paid', {
+              invoiceId: invoice.id,
+              amount: invoice.amount_paid,
+            });
+          }
+        }
+        break;
       }
 
       case 'invoice.payment_failed': {
-        const invoice = event.data.object as Stripe.Invoice
-        const failedSubscriptionId = invoice.lines?.data?.[0]?.subscription
+        const invoice = event.data.object as Stripe.Invoice;
+        const workspaceId = await getWorkspaceForCustomer(supabase, invoice.customer as string);
+        const failedSubscriptionId = invoice.lines?.data?.[0]?.subscription;
 
         if (failedSubscriptionId) {
           // Update subscription status
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (supabase.from('subscriptions') as any)
+          await supabase
+            .from('workspace_subscriptions')
             .update({
               status: 'past_due',
               updated_at: new Date().toISOString(),
             })
-            .eq('stripe_subscription_id', failedSubscriptionId)
+            .eq('stripe_subscription_id', failedSubscriptionId);
         }
 
-        // TODO: Send payment failed notification email
-        break
+        if (workspaceId) {
+          await recordBillingEvent(supabase, workspaceId, 'payment_failed', {
+            invoiceId: invoice.id,
+            amount: invoice.amount_due,
+          });
+        }
+        break;
+      }
+
+      case 'payment_method.attached': {
+        const paymentMethod = event.data.object as Stripe.PaymentMethod;
+        const workspaceId = await getWorkspaceForCustomer(supabase, paymentMethod.customer as string);
+
+        if (workspaceId) {
+          await adminClient.from('payment_methods').upsert({
+            workspace_id: workspaceId,
+            stripe_payment_method_id: paymentMethod.id,
+            type: paymentMethod.type,
+            last_four: paymentMethod.card?.last4,
+            brand: paymentMethod.card?.brand,
+            exp_month: paymentMethod.card?.exp_month,
+            exp_year: paymentMethod.card?.exp_year,
+            is_default: false,
+          }, {
+            onConflict: 'stripe_payment_method_id',
+          });
+        }
+        break;
+      }
+
+      case 'payment_method.detached': {
+        const paymentMethod = event.data.object as Stripe.PaymentMethod;
+        await supabase
+          .from('payment_methods')
+          .delete()
+          .eq('stripe_payment_method_id', paymentMethod.id);
+        break;
       }
 
       case 'customer.subscription.trial_will_end': {
-        const subscription = event.data.object as Stripe.Subscription
-        // TODO: Send trial ending notification email
-        console.log('Trial ending for subscription:', subscription.id)
-        break
+        const subscription = event.data.object as Stripe.Subscription;
+        const workspaceId = await getWorkspaceForCustomer(supabase, subscription.customer as string);
+
+        if (workspaceId) {
+          await recordBillingEvent(supabase, workspaceId, 'trial_ending', {
+            subscriptionId: subscription.id,
+            trialEnd: subscription.trial_end,
+          });
+        }
+        break;
       }
 
       default:
-        console.log(`Unhandled event type: ${event.type}`)
+        console.log(`Unhandled event type: ${event.type}`);
     }
 
-    return NextResponse.json({ received: true })
+    return NextResponse.json({ received: true });
   } catch (error) {
-    console.error('Webhook handler error:', error)
+    console.error('Webhook handler error:', error);
     return NextResponse.json(
       { error: 'Webhook handler failed' },
       { status: 500 }
-    )
+    );
+  }
+}
+
+// Helper: Get workspace ID for Stripe customer
+async function getWorkspaceForCustomer(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  customerId: string
+): Promise<string | null> {
+  const { data } = await supabase
+    .from('stripe_customers')
+    .select('workspace_id')
+    .eq('stripe_customer_id', customerId)
+    .single();
+
+  return data?.workspace_id || null;
+}
+
+// Helper: Record billing event
+async function recordBillingEvent(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  workspaceId: string | null,
+  eventType: string,
+  data: Record<string, unknown>
+): Promise<void> {
+  if (!workspaceId) return;
+
+  try {
+    const adminClient = createAdminClient();
+    await adminClient.from('billing_events').insert({
+      workspace_id: workspaceId,
+      event_type: eventType,
+      data,
+    });
+  } catch (error) {
+    console.error('Failed to record billing event:', error);
   }
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import type { CampaignStatus } from '@/lib/campaigns'
 import { logAuditEventAsync, getRequestMetadata, AuditAction } from '@/lib/audit'
 
@@ -154,10 +155,9 @@ export async function POST(
         updates.status = newStatus
         break
 
-      case 'duplicate':
+      case 'duplicate': {
         // Create a copy of the campaign
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data: original } = await (supabase.from('campaigns') as any)
+        const { data: original } = await supabase.from('campaigns')
           .select('*')
           .eq('id', campaignId)
           .single()
@@ -166,12 +166,13 @@ export async function POST(
           return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
         }
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data: duplicate, error: dupError } = await (supabase.from('campaigns') as any)
+        // Use admin client to bypass RLS for INSERT operations
+        const adminClient = createAdminClient()
+        const { data: duplicate, error: dupError } = await adminClient.from('campaigns')
           .insert({
             organization_id: original.organization_id,
             name: `${original.name} (Copy)`,
-            status: 'draft',
+            status: 'draft' as const,
             type: original.type,
             settings: original.settings,
             stats: {
@@ -205,9 +206,8 @@ export async function POST(
           .eq('campaign_id', campaignId)
           .single() as { data: { steps: unknown[] } | null }
 
-        if (originalSequence) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (supabase.from('campaign_sequences') as any)
+        if (originalSequence && duplicate) {
+          await adminClient.from('campaign_sequences')
             .insert({
               campaign_id: duplicate.id,
               steps: originalSequence.steps,
@@ -217,20 +217,20 @@ export async function POST(
         return NextResponse.json({
           success: true,
           campaign: {
-            id: duplicate.id,
-            name: duplicate.name,
-            status: duplicate.status,
+            id: duplicate?.id,
+            name: duplicate?.name,
+            status: duplicate?.status,
           },
           message: 'Campaign duplicated successfully',
         })
+      }
 
       default:
         return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
     }
 
     // Update campaign status
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error: updateError } = await (supabase.from('campaigns') as any)
+    const { error: updateError } = await supabase.from('campaigns')
       .update(updates)
       .eq('id', campaignId)
 

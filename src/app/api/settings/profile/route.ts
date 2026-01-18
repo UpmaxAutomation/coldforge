@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import type { Json } from '@/types/database'
 import { updateProfileSchema } from '@/lib/schemas'
 import { validateRequest } from '@/lib/validation'
@@ -34,8 +35,11 @@ export async function GET() {
     if (error) {
       // If no profile exists, create one
       if (error.code === 'PGRST116') {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data: newProfile, error: insertError } = await (supabase.from('users') as any)
+        // Use admin client to bypass RLS for insert
+        const adminClient = createAdminClient()
+        const { data: newProfile, error: insertError } = await adminClient
+          .from('users')
+          // @ts-expect-error - Supabase type inference issue with Json column inserts
           .insert({
             id: user.id,
             email: user.email!,
@@ -108,30 +112,37 @@ export async function PATCH(request: NextRequest) {
 
     const currentSettings = (currentProfile?.settings as Record<string, unknown>) || {}
 
-    // Build update data
-    const updateData: Record<string, unknown> = {
+    // Build update object dynamically
+    interface ProfileUpdate {
+      updated_at: string
+      full_name?: string | null
+      avatar_url?: string | null
+      settings?: Json
+    }
+
+    const updateObj: ProfileUpdate = {
       updated_at: new Date().toISOString()
     }
 
     if (full_name !== undefined) {
-      updateData.full_name = full_name
+      updateObj.full_name = full_name
     }
 
     if (avatar_url !== undefined) {
-      updateData.avatar_url = avatar_url
+      updateObj.avatar_url = avatar_url
     }
 
     if (timezone !== undefined) {
-      updateData.settings = {
+      updateObj.settings = {
         ...currentSettings,
         timezone
-      }
+      } as unknown as Json
     }
 
-    // Update profile
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: profile, error } = await (supabase.from('users') as any)
-      .update(updateData)
+    const { data: profile, error } = await supabase
+      .from('users')
+      // @ts-expect-error - Supabase type inference issue with Json column updates
+      .update(updateObj)
       .eq('id', user.id)
       .select('id, email, full_name, avatar_url, role, settings')
       .single() as { data: UserProfile | null; error: { code?: string; message?: string } | null }

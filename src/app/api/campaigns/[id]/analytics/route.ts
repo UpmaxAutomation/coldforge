@@ -89,14 +89,53 @@ export async function GET(
 
     const sequences = sequencesResult.data as Pick<CampaignSequence, 'id' | 'step_number'>[] | null
 
-    // Calculate step-by-step analytics
+    // Get campaign_leads to determine which step each sent email belongs to
+    // by correlating the email send order with the lead's progression
+    const { data: campaignLeadsData } = await supabase
+      .from('campaign_leads')
+      .select('id, lead_id, current_step')
+      .eq('campaign_id', campaignId)
+
+    // Create a map of campaign_lead_id to current_step for step attribution
+    const campaignLeadStepMap = new Map<string, number>()
+    if (campaignLeadsData) {
+      for (const cl of campaignLeadsData) {
+        campaignLeadStepMap.set(cl.id, cl.current_step)
+      }
+    }
+
+    // Group sent emails by their campaign_lead and determine step
+    // We use the email's position in the sequence for a lead to determine its step
+    const emailsByLead = new Map<string, SentEmail[]>()
+    for (const email of sentEmails || []) {
+      if (!email.campaign_lead_id) continue
+      const existing = emailsByLead.get(email.campaign_lead_id) || []
+      existing.push(email)
+      emailsByLead.set(email.campaign_lead_id, existing)
+    }
+
+    // Sort each lead's emails by sent_at to determine step order
+    Array.from(emailsByLead.entries()).forEach(([leadId, emails]) => {
+      emails.sort((a, b) => new Date(a.sent_at).getTime() - new Date(b.sent_at).getTime())
+      emailsByLead.set(leadId, emails)
+    })
+
+    // Assign step numbers based on email order for each lead
+    const emailStepMap = new Map<string, number>()
+    Array.from(emailsByLead.values()).forEach((emails) => {
+      emails.forEach((email, index) => {
+        // Step numbers are 1-indexed
+        emailStepMap.set(email.id, index + 1)
+      })
+    })
+
+    // Calculate step-by-step analytics using the computed step assignments
     const stepAnalytics = (sequences || []).map((seq) => {
-      // For now, return placeholder data since we'd need to track which step each email was sent from
-      // In a real implementation, you'd join sent_emails with a step tracking field
-      const stepEmails = sentEmails?.filter(() => {
-        // This would filter by step - placeholder for now
-        return true
-      }) || []
+      // Filter emails that belong to this step
+      const stepEmails = (sentEmails || []).filter(e => {
+        const assignedStep = emailStepMap.get(e.id)
+        return assignedStep === seq.step_number
+      })
 
       const sent = stepEmails.length
       const opened = stepEmails.filter(e => e.status === 'opened' || e.opened_at).length

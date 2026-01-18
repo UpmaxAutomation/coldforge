@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { inboxSyncRequestSchema } from '@/lib/schemas'
 import { handleApiError } from '@/lib/errors/handler'
 import {
@@ -398,9 +399,10 @@ export async function POST(request: NextRequest) {
           if (existingThread) {
             threadId = existingThread.id
           } else {
-            // Create new thread
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const { data: newThread, error: threadError } = await (supabase.from('threads') as any)
+            // Create new thread using admin client to bypass RLS
+            const adminClient = createAdminClient()
+            const { data: newThread, error: threadError } = await adminClient
+              .from('threads')
               .insert({
                 organization_id: profile.organization_id,
                 mailbox_id: mailbox.id,
@@ -448,8 +450,10 @@ export async function POST(request: NextRequest) {
             }
 
           // Insert reply and get the ID for potential AI categorization
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const { data: insertedReply, error: replyError } = await (supabase.from('replies') as any)
+          // Use admin client to bypass RLS
+          const replyAdminClient = createAdminClient()
+          const { data: insertedReply, error: replyError } = await replyAdminClient
+            .from('replies')
             .insert({
               organization_id: profile.organization_id,
               campaign_id: lead?.campaign_leads?.[0]?.campaign_id || null,
@@ -493,8 +497,8 @@ export async function POST(request: NextRequest) {
           }
 
           // Update thread
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (supabase.from('threads') as any)
+          await supabase
+            .from('threads')
             .update({
               last_message_at: message.date.toISOString(),
               category,
@@ -504,8 +508,7 @@ export async function POST(request: NextRequest) {
             .eq('id', threadId)
 
           // Increment thread message count
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (supabase.rpc as any)('increment_thread_message_count', {
+          await supabase.rpc('increment_thread_message_count', {
             p_thread_id: threadId,
           })
 
@@ -553,8 +556,8 @@ export async function POST(request: NextRequest) {
           const confidence = catResult.category.confidence
 
           // Update the reply with AI categorization results
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const { error: updateReplyError } = await (supabase.from('replies') as any)
+          const { error: updateReplyError } = await supabase
+            .from('replies')
             .update({
               category: aiCategory,
               sentiment: aiSentiment,
@@ -571,8 +574,8 @@ export async function POST(request: NextRequest) {
           }
 
           // Update the parent thread's category based on latest message
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const { error: updateThreadError } = await (supabase.from('threads') as any)
+          const { error: updateThreadError } = await supabase
+            .from('threads')
             .update({
               category: aiCategory,
               sentiment: aiSentiment,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import {
   createMailboxProviderClient,
   generateMailboxBatch,
@@ -96,6 +97,9 @@ export async function POST(request: NextRequest) {
     const hasProviderConfig = domain.provider_config &&
       (domain.provider_config.google_workspace || domain.provider_config.microsoft_365)
 
+    // Use admin client for INSERT operations to bypass RLS
+    const adminClient = createAdminClient()
+
     if (hasProviderConfig && providerType !== 'custom_smtp') {
       // Use provider API for provisioning
       const client = createMailboxProviderClient(
@@ -109,13 +113,12 @@ export async function POST(request: NextRequest) {
           delayMs: 1000, // 1 second delay between creations
         })
 
-        // Create database records for successful provisions
+        // Create database records for successful provisions using admin client
         for (const result of provisionResult.results) {
           if (result.success) {
             const config = mailboxConfigs.find(m => m.email === result.email)
 
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const { data: mailbox, error: _dbError } = await (supabase.from('mailboxes') as any)
+            const { data: mailbox, error: _dbError } = await adminClient.from('mailboxes')
               .insert({
                 email: result.email,
                 domain_id: domainId,
@@ -165,8 +168,7 @@ export async function POST(request: NextRequest) {
             continue
           }
 
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const { data: mailbox, error: dbError } = await (supabase.from('mailboxes') as any)
+          const { data: mailbox, error: dbError } = await adminClient.from('mailboxes')
             .insert({
               email: config.email,
               domain_id: domainId,

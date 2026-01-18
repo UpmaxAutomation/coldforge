@@ -134,8 +134,7 @@ export async function POST(
     }
 
     // Record the outbound message in thread
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase.from('thread_messages') as any)
+    await supabase.from('thread_messages')
       .insert({
         thread_id: reply.thread_id,
         direction: 'outbound',
@@ -150,8 +149,7 @@ export async function POST(
       })
 
     // Update reply status to replied
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase.from('replies') as any)
+    await supabase.from('replies')
       .update({
         status: 'replied',
         updated_at: new Date().toISOString(),
@@ -159,8 +157,7 @@ export async function POST(
       .eq('id', id)
 
     // Update thread
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase.from('threads') as any)
+    await supabase.from('threads')
       .update({
         last_message_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -168,8 +165,7 @@ export async function POST(
       .eq('id', reply.thread_id)
 
     // Increment thread message count
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase.rpc as any)('increment_thread_message_count', {
+    await supabase.rpc('increment_thread_message_count', {
       p_thread_id: reply.thread_id,
     })
 

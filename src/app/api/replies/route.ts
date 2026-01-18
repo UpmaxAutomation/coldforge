@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import {
   autoCategorize,
   type ReplyCategory,
@@ -114,8 +115,6 @@ export async function GET(request: NextRequest) {
 // POST /api/replies - Create reply (from webhook/email receive)
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient()
-
     // Validate request body
     const validation = await validateRequest(request, createReplySchema)
     if (!validation.success) return validation.error
@@ -140,8 +139,11 @@ export async function POST(request: NextRequest) {
     // Auto-categorize the reply
     const categorization = autoCategorize(subject, bodyText)
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: reply, error } = await (supabase.from('replies') as any)
+    // Use admin client for INSERT to bypass RLS
+    const adminClient = createAdminClient()
+
+    const { data: reply, error } = await adminClient
+      .from('replies')
       .insert({
         organization_id: organizationId,
         campaign_id: campaignId,
@@ -169,9 +171,9 @@ export async function POST(request: NextRequest) {
       throw error
     }
 
-    // Update or create thread
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase.from('threads') as any)
+    // Update or create thread (use admin client for upsert)
+    await adminClient
+      .from('threads')
       .upsert({
         id: threadId,
         organization_id: organizationId,
@@ -189,16 +191,15 @@ export async function POST(request: NextRequest) {
         onConflict: 'id',
       })
 
-    // Increment thread message count
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase.rpc as any)('increment_thread_message_count', {
+    // Increment thread message count (use admin client for RPC)
+    await adminClient.rpc('increment_thread_message_count', {
       p_thread_id: threadId,
     })
 
-    // Update lead status if interested
+    // Update lead status if interested (use admin client for UPDATE)
     if (leadId && categorization.category === 'interested') {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (supabase.from('leads') as any)
+      await adminClient
+        .from('leads')
         .update({
           status: 'interested',
           updated_at: new Date().toISOString(),
@@ -206,10 +207,10 @@ export async function POST(request: NextRequest) {
         .eq('id', leadId)
     }
 
-    // Handle unsubscribe requests
+    // Handle unsubscribe requests (use admin client for UPDATE)
     if (leadId && categorization.category === 'unsubscribe') {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (supabase.from('leads') as any)
+      await adminClient
+        .from('leads')
         .update({
           status: 'unsubscribed',
           updated_at: new Date().toISOString(),

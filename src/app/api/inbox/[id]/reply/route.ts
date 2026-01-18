@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { createTransporter, sendEmail, type EmailContent } from '@/lib/sending'
 import { decryptObject } from '@/lib/encryption'
 import { google } from 'googleapis'
@@ -497,9 +498,11 @@ export async function POST(
 
     const sentAt = new Date().toISOString()
 
+    // Use admin client for inserts to bypass RLS
+    const adminClient = createAdminClient()
+
     // Record the outbound message in thread_messages
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase.from('thread_messages') as any)
+    await adminClient.from('thread_messages')
       .insert({
         thread_id: threadId,
         direction: 'outbound',
@@ -514,8 +517,7 @@ export async function POST(
       })
 
     // Also record in replies table with direction='outbound' for unified tracking
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase.from('replies') as any)
+    await adminClient.from('replies')
       .insert({
         organization_id: organizationId,
         thread_id: threadId,
@@ -533,8 +535,7 @@ export async function POST(
       })
 
     // Update thread last_message_at
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase.from('threads') as any)
+    await supabase.from('threads')
       .update({
         last_message_at: sentAt,
         updated_at: sentAt,
@@ -542,14 +543,12 @@ export async function POST(
       .eq('id', threadId)
 
     // Increment thread message count
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase.rpc as any)('increment_thread_message_count', {
+    await supabase.rpc('increment_thread_message_count', {
       p_thread_id: threadId,
     })
 
     // Mark inbound replies as replied
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase.from('replies') as any)
+    await supabase.from('replies')
       .update({ status: 'replied', updated_at: sentAt })
       .eq('thread_id', threadId)
       .eq('status', 'read')

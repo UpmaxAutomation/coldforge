@@ -211,8 +211,7 @@ export async function PUT(
       updates.sentiment = sentiment
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: thread, error } = await (supabase.from('threads') as any)
+    const { data: thread, error } = await supabase.from('threads')
       .update(updates)
       .eq('id', id)
       .select()

@@ -194,8 +194,8 @@ export async function POST(request: NextRequest) {
       max_attempts: 3,
     }))
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: createdJobs, error: createError } = await (supabase.from('email_jobs') as any)
+    const { data: createdJobs, error: createError } = await supabase
+      .from('email_jobs')
       .insert(jobs)
       .select()
 
@@ -244,10 +244,10 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let query = (supabase.from('email_jobs') as any)
+    let query = supabase
+      .from('email_jobs')
       .update({
-        status: 'cancelled',
+        status: 'cancelled' as const,
         updated_at: new Date().toISOString(),
       })
       .eq('organization_id', profile.organization_id)

@@ -152,12 +152,12 @@ export async function PUT(
     if (warmupEnabled !== undefined) updates.warmup_enabled = warmupEnabled
     if (warmupStage !== undefined) updates.warmup_stage = warmupStage
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: mailbox, error: updateError } = await (supabase.from('mailboxes') as any)
+    const { data: mailbox, error: updateError } = await supabase
+      .from('mailboxes')
       .update(updates)
       .eq('id', id)
       .select()
-      .single() as { data: MailboxRecord | null; error: Error | null }
+      .single()
 
     if (updateError) {
       console.error('Error updating mailbox:', updateError)

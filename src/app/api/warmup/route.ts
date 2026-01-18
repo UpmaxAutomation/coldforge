@@ -156,8 +156,7 @@ export async function POST(request: NextRequest) {
         const idsToEnable = mailboxIds as string[]
 
         // Enable warmup for specified mailboxes
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { error } = await (supabase.from('mailboxes') as any)
+        const { error } = await supabase.from('mailboxes')
           .update({
             warmup_enabled: true,
             warmup_stage: 1,
@@ -185,8 +184,7 @@ export async function POST(request: NextRequest) {
         const idsToDisable = mailboxIds as string[]
 
         // Disable warmup for specified mailboxes
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { error } = await (supabase.from('mailboxes') as any)
+        const { error } = await supabase.from('mailboxes')
           .update({
             warmup_enabled: false,
             updated_at: new Date().toISOString(),

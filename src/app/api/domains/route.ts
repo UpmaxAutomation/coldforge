@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { checkDnsHealth } from '@/lib/dns'
 import { createDomainSchema } from '@/lib/schemas'
 import {
@@ -111,9 +112,10 @@ export async function POST(request: NextRequest) {
       // DNS check failed, but we'll still add the domain
     }
 
-    // Create domain
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: newDomain, error } = await (supabase.from('domains') as any)
+    // Create domain using admin client to bypass RLS
+    const adminClient = createAdminClient()
+    const { data: newDomain, error } = await adminClient
+      .from('domains')
       .insert({
         organization_id: profile.organization_id,
         domain: domain.toLowerCase(),
@@ -129,7 +131,7 @@ export async function POST(request: NextRequest) {
         auto_purchased: false,
       })
       .select()
-      .single() as { data: DomainResponse | null; error: { code?: string } | null }
+      .single()
 
     if (error) {
       if (error.code === '23505') {

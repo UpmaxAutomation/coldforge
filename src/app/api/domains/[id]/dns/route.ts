@@ -7,17 +7,14 @@ import {
   generateDmarcRecord,
   generateAllRecords
 } from '@/lib/domains/dns-config'
+import type { Database, Tables } from '@/types/database'
 
 interface RouteContext {
   params: Promise<{ id: string }>
 }
 
-interface DomainRow {
-  id: string
-  domain: string
-  dkim_selector: string | null
-  dkim_public_key: string | null
-}
+type DomainRow = Tables<'domains'>
+type DomainUpdate = Database['public']['Tables']['domains']['Update']
 
 // GET /api/domains/[id]/dns - Get DNS records for a domain
 export async function GET(_request: NextRequest, context: RouteContext) {
@@ -35,7 +32,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       .from('domains')
       .select('id, domain, dkim_selector, dkim_public_key')
       .eq('id', id)
-      .single() as { data: DomainRow | null; error: unknown }
+      .single() as unknown as { data: Pick<DomainRow, 'id' | 'domain' | 'dkim_selector' | 'dkim_public_key'> | null; error: Error | null }
 
     if (error || !domain) {
       return NextResponse.json({ error: 'Domain not found' }, { status: 404 })
@@ -88,14 +85,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
       .from('domains')
       .select('id, domain')
       .eq('id', id)
-      .single() as { data: { id: string; domain: string } | null; error: unknown }
+      .single() as unknown as { data: Pick<DomainRow, 'id' | 'domain'> | null; error: Error | null }
 
     if (fetchError || !domain) {
       return NextResponse.json({ error: 'Domain not found' }, { status: 404 })
     }
 
     // Prepare update data
-    const updates: Record<string, unknown> = {
+    const updates: DomainUpdate = {
       updated_at: new Date().toISOString(),
     }
 
@@ -103,10 +100,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (dkim_public_key !== undefined) updates.dkim_public_key = dkim_public_key
 
     // Update domain with DKIM configuration
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error: updateError } = await (supabase.from('domains') as any)
+    const { error: updateError } = await ((supabase
+      .from('domains') as ReturnType<typeof supabase.from>)
       .update(updates)
-      .eq('id', id)
+      .eq('id', id) as unknown as Promise<{ error: Error | null }>)
 
     if (updateError) {
       throw updateError

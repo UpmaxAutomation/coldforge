@@ -1,30 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { checkDnsHealth, DnsHealthResult } from '@/lib/dns'
+import type { Database, Tables } from '@/types/database'
 
 interface RouteContext {
   params: Promise<{ id: string }>
 }
 
-// Type for domain response
-interface DomainResponse {
-  id: string
-  domain: string
-  registrar: 'cloudflare' | 'namecheap' | 'porkbun' | 'manual' | null
-  dns_provider: string | null
-  spf_configured: boolean
-  dkim_configured: boolean
-  dkim_selector: string | null
-  dmarc_configured: boolean
-  bimi_configured: boolean
-  health_status: 'healthy' | 'warning' | 'error' | 'pending'
-  last_health_check: string | null
-  auto_purchased: boolean
-  purchase_price: number | null
-  expires_at: string | null
-  created_at: string
-  updated_at: string
-}
+type DomainRow = Tables<'domains'>
+type DomainUpdate = Database['public']['Tables']['domains']['Update']
 
 // GET /api/domains/[id] - Get a single domain
 export async function GET(_request: NextRequest, context: RouteContext) {
@@ -41,7 +25,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       .from('domains')
       .select('*')
       .eq('id', id)
-      .single() as { data: DomainResponse | null; error: unknown }
+      .single() as unknown as { data: DomainRow | null; error: Error | null }
 
     if (error || !domain) {
       return NextResponse.json({ error: 'Domain not found' }, { status: 404 })
@@ -74,19 +58,19 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       dkim_selector,
     } = body
 
-    const updates: Record<string, unknown> = {
+    const updates: DomainUpdate = {
       updated_at: new Date().toISOString(),
     }
 
     if (dns_provider !== undefined) updates.dns_provider = dns_provider
     if (dkim_selector !== undefined) updates.dkim_selector = dkim_selector
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: domain, error } = await (supabase.from('domains') as any)
+    const { data: domain, error } = await ((supabase
+      .from('domains') as ReturnType<typeof supabase.from>)
       .update(updates)
       .eq('id', id)
       .select()
-      .single() as { data: DomainResponse | null; error: unknown }
+      .single() as unknown as Promise<{ data: DomainRow | null; error: Error | null }>)
 
     if (error) {
       throw error
@@ -113,10 +97,10 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (supabase.from('domains') as any)
+    const { error } = await (supabase
+      .from('domains')
       .delete()
-      .eq('id', id)
+      .eq('id', id) as unknown as Promise<{ error: Error | null }>)
 
     if (error) {
       throw error
@@ -148,7 +132,7 @@ export async function POST(_request: NextRequest, context: RouteContext) {
       .from('domains')
       .select('domain, dkim_selector')
       .eq('id', id)
-      .single() as { data: { domain: string; dkim_selector: string | null } | null; error: unknown }
+      .single() as unknown as { data: Pick<DomainRow, 'domain' | 'dkim_selector'> | null; error: Error | null }
 
     if (fetchError || !domain) {
       return NextResponse.json({ error: 'Domain not found' }, { status: 404 })
@@ -167,18 +151,19 @@ export async function POST(_request: NextRequest, context: RouteContext) {
     }
 
     // Update domain with health results
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase.from('domains') as any)
-      .update({
-        spf_configured: healthResult.spf.configured,
-        dkim_configured: healthResult.dkim.configured,
-        dkim_selector: healthResult.dkim.selector,
-        dmarc_configured: healthResult.dmarc.configured,
-        health_status: healthResult.overall,
-        last_health_check: healthResult.checkedAt,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', id)
+    const healthUpdate: DomainUpdate = {
+      spf_configured: healthResult.spf.configured,
+      dkim_configured: healthResult.dkim.configured,
+      dkim_selector: healthResult.dkim.selector,
+      dmarc_configured: healthResult.dmarc.configured,
+      health_status: healthResult.overall,
+      last_health_check: healthResult.checkedAt,
+      updated_at: new Date().toISOString(),
+    }
+    await ((supabase
+      .from('domains') as ReturnType<typeof supabase.from>)
+      .update(healthUpdate)
+      .eq('id', id) as unknown as Promise<{ error: Error | null }>)
 
     return NextResponse.json({
       health: healthResult,

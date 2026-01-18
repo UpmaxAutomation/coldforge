@@ -65,8 +65,7 @@ export async function GET(
 
     // Mark as read if unread
     if (reply.status === 'unread') {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (supabase.from('replies') as any)
+      await supabase.from('replies')
         .update({
           status: 'read',
           updated_at: new Date().toISOString(),
@@ -196,8 +195,7 @@ export async function PUT(
       }
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: reply, error } = await (supabase.from('replies') as any)
+    const { data: updatedReply, error } = await supabase.from('replies')
       .update(updates)
       .eq('id', id)
       .select()
@@ -209,8 +207,7 @@ export async function PUT(
 
     // Update thread category/sentiment if changed
     if (category || sentiment) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (supabase.from('threads') as any)
+      await supabase.from('threads')
         .update({
           ...(category && { category }),
           ...(sentiment && { sentiment }),
@@ -219,7 +216,7 @@ export async function PUT(
         .eq('id', existing.thread_id)
     }
 
-    return NextResponse.json({ reply })
+    return NextResponse.json({ reply: updatedReply })
   } catch (error) {
     console.error('Update reply error:', error)
     return NextResponse.json(
@@ -255,8 +252,7 @@ export async function DELETE(
     }
 
     // Archive (soft delete) the reply
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (supabase.from('replies') as any)
+    const { error } = await supabase.from('replies')
       .update({
         status: 'archived',
         updated_at: new Date().toISOString(),

@@ -49,7 +49,8 @@ import {
   Split,
   AlertCircle,
   Save,
-  Variable
+  Variable,
+  Check
 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
@@ -75,6 +76,10 @@ import {
   generateStepId,
   generateVariantId,
   previewTemplate,
+  analyzeSpintax,
+  previewSpintaxVariations,
+  checkVariationUniqueness,
+  type SpintaxAnalysis,
 } from '@/lib/campaigns'
 
 interface SequenceEditorProps {
@@ -111,6 +116,27 @@ export function SequenceEditor({ campaignId, isEditable }: SequenceEditorProps) 
   const [showPreview, setShowPreview] = useState(false)
   const [previewContent, setPreviewContent] = useState({ subject: '', body: '' })
   const [showVariables, setShowVariables] = useState(false)
+  const [spintaxAnalysis, setSpintaxAnalysis] = useState<{
+    subject: SpintaxAnalysis | null
+    body: SpintaxAnalysis | null
+    combined: { totalVariations: number; isValid: boolean; errors: string[] }
+    subjectVariations: string[]
+    bodyVariations: string[]
+    uniquenessCheck: {
+      totalVariations: number
+      recipientCount: number
+      coverageRatio: number
+      isAdequate: boolean
+      recommendation: string
+    } | null
+  }>({
+    subject: null,
+    body: null,
+    combined: { totalVariations: 0, isValid: true, errors: [] },
+    subjectVariations: [],
+    bodyVariations: [],
+    uniquenessCheck: null,
+  })
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -293,6 +319,41 @@ export function SequenceEditor({ campaignId, isEditable }: SequenceEditorProps) 
     const previewedSubject = previewTemplate(variant.subject)
     const previewedBody = previewTemplate(variant.body)
     setPreviewContent({ subject: previewedSubject, body: previewedBody })
+
+    // Analyze spintax in subject and body
+    const subjectAnalysis = analyzeSpintax(variant.subject)
+    const bodyAnalysis = analyzeSpintax(variant.body)
+
+    // Calculate combined variations (subject × body)
+    const totalCombined = subjectAnalysis.totalVariations * bodyAnalysis.totalVariations
+    const combinedErrors = [...subjectAnalysis.errors, ...bodyAnalysis.errors]
+
+    // Generate sample variations
+    const subjectVariations = subjectAnalysis.totalVariations > 1
+      ? previewSpintaxVariations(variant.subject, 5)
+      : [previewedSubject]
+    const bodyVariations = bodyAnalysis.totalVariations > 1
+      ? previewSpintaxVariations(variant.body, 3)
+      : [previewedBody]
+
+    // Check uniqueness coverage (assuming 1000 recipients as estimate)
+    const estimatedRecipients = 1000
+    const combinedText = `${variant.subject}\n${variant.body}`
+    const uniquenessCheck = checkVariationUniqueness(combinedText, estimatedRecipients)
+
+    setSpintaxAnalysis({
+      subject: subjectAnalysis,
+      body: bodyAnalysis,
+      combined: {
+        totalVariations: totalCombined,
+        isValid: subjectAnalysis.isValid && bodyAnalysis.isValid,
+        errors: combinedErrors,
+      },
+      subjectVariations,
+      bodyVariations,
+      uniquenessCheck,
+    })
+
     setShowPreview(true)
   }
 
@@ -607,30 +668,152 @@ export function SequenceEditor({ campaignId, isEditable }: SequenceEditorProps) 
         </DialogContent>
       </Dialog>
 
-      {/* Preview Dialog */}
+      {/* Preview Dialog - Enhanced with Spintax Analysis */}
       <Dialog open={showPreview} onOpenChange={setShowPreview}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Email Preview</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              Email Preview
+              {spintaxAnalysis.combined.totalVariations > 1 && (
+                <Badge variant="secondary" className="font-normal">
+                  {spintaxAnalysis.combined.totalVariations.toLocaleString()} unique variations
+                </Badge>
+              )}
+            </DialogTitle>
             <DialogDescription>
-              Preview with sample data
+              Preview with sample data and spintax variations
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label className="text-muted-foreground">Subject</Label>
-              <div className="rounded-md border p-3 bg-muted/50">
-                {previewContent.subject || '(No subject)'}
+
+          {/* Spintax Stats */}
+          {spintaxAnalysis.combined.totalVariations > 1 && (
+            <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Variation Analysis</span>
+                {spintaxAnalysis.combined.isValid ? (
+                  <Badge variant="outline" className="text-green-600 border-green-300">
+                    <Check className="h-3 w-3 mr-1" />
+                    Valid Spintax
+                  </Badge>
+                ) : (
+                  <Badge variant="destructive">
+                    Syntax Errors
+                  </Badge>
+                )}
               </div>
+
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                <div className="space-y-1">
+                  <p className="text-muted-foreground">Subject Variations</p>
+                  <p className="text-lg font-semibold">{spintaxAnalysis.subject?.totalVariations?.toLocaleString() || 1}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-muted-foreground">Body Variations</p>
+                  <p className="text-lg font-semibold">{spintaxAnalysis.body?.totalVariations?.toLocaleString() || 1}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-muted-foreground">Total Unique Emails</p>
+                  <p className="text-lg font-semibold text-primary">{spintaxAnalysis.combined.totalVariations.toLocaleString()}</p>
+                </div>
+              </div>
+
+              {/* Uniqueness Check */}
+              {spintaxAnalysis.uniquenessCheck && (
+                <div className={`rounded-md p-3 text-sm ${
+                  spintaxAnalysis.uniquenessCheck.isAdequate
+                    ? 'bg-green-50 text-green-800 border border-green-200'
+                    : 'bg-amber-50 text-amber-800 border border-amber-200'
+                }`}>
+                  <div className="flex items-start gap-2">
+                    {spintaxAnalysis.uniquenessCheck.isAdequate ? (
+                      <Check className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                    ) : (
+                      <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                    )}
+                    <div>
+                      <p className="font-medium">
+                        {spintaxAnalysis.uniquenessCheck.isAdequate
+                          ? 'Good for deliverability'
+                          : 'May affect deliverability'}
+                      </p>
+                      <p className="text-xs mt-1">{spintaxAnalysis.uniquenessCheck.recommendation}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Errors if any */}
+              {spintaxAnalysis.combined.errors.length > 0 && (
+                <div className="rounded-md bg-red-50 border border-red-200 p-3 text-sm text-red-800">
+                  <p className="font-medium mb-1">Spintax Errors:</p>
+                  <ul className="list-disc list-inside space-y-1">
+                    {spintaxAnalysis.combined.errors.map((error, i) => (
+                      <li key={i}>{error}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
+          )}
+
+          <div className="space-y-4">
+            {/* Subject Preview */}
             <div className="space-y-2">
-              <Label className="text-muted-foreground">Body</Label>
-              <div
-                className="rounded-md border p-4 min-h-[200px] bg-white prose prose-sm max-w-none"
-                dangerouslySetInnerHTML={{ __html: previewContent.body.replace(/\n/g, '<br/>') || '(No content)' }}
-              />
+              <Label className="text-muted-foreground flex items-center gap-2">
+                Subject
+                {spintaxAnalysis.subjectVariations.length > 1 && (
+                  <Badge variant="outline" className="text-xs font-normal">
+                    {spintaxAnalysis.subjectVariations.length} samples
+                  </Badge>
+                )}
+              </Label>
+              {spintaxAnalysis.subjectVariations.length > 1 ? (
+                <div className="space-y-2">
+                  {spintaxAnalysis.subjectVariations.map((variation, index) => (
+                    <div key={index} className="rounded-md border p-3 bg-muted/50 text-sm">
+                      <span className="text-xs text-muted-foreground mr-2">#{index + 1}</span>
+                      {variation || '(No subject)'}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-md border p-3 bg-muted/50">
+                  {previewContent.subject || '(No subject)'}
+                </div>
+              )}
+            </div>
+
+            {/* Body Preview */}
+            <div className="space-y-2">
+              <Label className="text-muted-foreground flex items-center gap-2">
+                Body
+                {spintaxAnalysis.bodyVariations.length > 1 && (
+                  <Badge variant="outline" className="text-xs font-normal">
+                    {spintaxAnalysis.bodyVariations.length} samples
+                  </Badge>
+                )}
+              </Label>
+              {spintaxAnalysis.bodyVariations.length > 1 ? (
+                <div className="space-y-2">
+                  {spintaxAnalysis.bodyVariations.map((variation, index) => (
+                    <div key={index} className="rounded-md border p-4 bg-white">
+                      <div className="text-xs text-muted-foreground mb-2">Variation #{index + 1}</div>
+                      <div
+                        className="prose prose-sm max-w-none"
+                        dangerouslySetInnerHTML={{ __html: variation.replace(/\n/g, '<br/>') || '(No content)' }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div
+                  className="rounded-md border p-4 min-h-[150px] bg-white prose prose-sm max-w-none"
+                  dangerouslySetInnerHTML={{ __html: previewContent.body.replace(/\n/g, '<br/>') || '(No content)' }}
+                />
+              )}
             </div>
           </div>
+
           <DialogFooter>
             <Button onClick={() => setShowPreview(false)}>Close</Button>
           </DialogFooter>

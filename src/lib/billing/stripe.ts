@@ -6,7 +6,7 @@ import { PLANS, type BillingInterval, type PlanTier } from './types'
 // Lazy Stripe initialization
 let stripeInstance: Stripe | null = null
 
-function getStripe(): Stripe {
+export function getStripe(): Stripe {
   if (!stripeInstance) {
     const stripeSecretKey = process.env.STRIPE_SECRET_KEY
     if (!stripeSecretKey) {

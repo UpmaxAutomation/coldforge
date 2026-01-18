@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import type { SequenceStep, CampaignStatus } from '@/lib/campaigns'
 
 interface SequenceRecord {
@@ -138,10 +139,12 @@ export async function PUT(
 
     let sequence: SequenceRecord
 
+    // Use admin client to bypass RLS for INSERT/UPDATE operations
+    const adminClient = createAdminClient()
+
     if (existing) {
       // Update existing
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase.from('campaign_sequences') as any)
+      const { data, error } = await adminClient.from('campaign_sequences')
         .update({
           steps,
           updated_at: new Date().toISOString(),
@@ -158,8 +161,7 @@ export async function PUT(
       sequence = data
     } else {
       // Create new
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase.from('campaign_sequences') as any)
+      const { data, error } = await adminClient.from('campaign_sequences')
         .insert({
           campaign_id: campaignId,
           steps,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import {
   createLeadSchema,
   listLeadsQuerySchema,
@@ -57,8 +58,8 @@ export async function GET(request: NextRequest) {
 
     const offset = (page - 1) * limit
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let query = (supabase.from('leads') as any)
+    let query = supabase
+      .from('leads')
       .select('*', { count: 'exact' })
       .eq('organization_id', userData.organization_id)
       .order('created_at', { ascending: false })
@@ -126,8 +127,10 @@ export async function POST(request: NextRequest) {
 
     const { email, firstName, lastName, company, title, phone, linkedinUrl, listId, customFields } = validationResult.data
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: lead, error } = await (supabase.from('leads') as any)
+    // Use admin client for INSERT to bypass RLS
+    const adminClient = createAdminClient()
+    const { data: lead, error } = await adminClient
+      .from('leads')
       .insert({
         organization_id: userData.organization_id,
         email,

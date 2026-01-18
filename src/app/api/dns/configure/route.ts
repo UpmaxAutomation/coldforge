@@ -191,8 +191,7 @@ export async function POST(request: NextRequest) {
     const dnsStatus = successCount === totalCount ? 'configured' :
                      successCount > 0 ? 'partial' : 'pending'
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase.from('domains') as any)
+    await supabase.from('domains')
       .update({
         dns_status: dnsStatus,
         dns_config: dnsSetup,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getRandomTagColor } from '@/lib/leads'
 
 interface LeadTagRecord {
@@ -105,9 +106,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Tag already exists' }, { status: 409 })
     }
 
-    // Create tag
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: tag, error: createError } = await (supabase.from('lead_tags') as any)
+    // Create tag using admin client to bypass RLS
+    const adminClient = createAdminClient()
+    const { data: tag, error: createError } = await adminClient.from('lead_tags')
       .insert({
         organization_id: profile.organization_id,
         name,
@@ -181,8 +182,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Delete tag
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error: deleteError } = await (supabase.from('lead_tags') as any)
+    const { error: deleteError } = await supabase.from('lead_tags')
       .delete()
       .eq('id', tagId)
       .eq('organization_id', profile.organization_id)

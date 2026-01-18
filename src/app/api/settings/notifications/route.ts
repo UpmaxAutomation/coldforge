@@ -104,11 +104,11 @@ export async function PATCH(request: NextRequest) {
     const updatedSettings = {
       ...currentSettings,
       notifications: updatedNotifications
-    }
+    } as unknown as Json
 
-    // Update user settings
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (supabase.from('users') as any)
+    const { error } = await supabase
+      .from('users')
+      // @ts-expect-error - Supabase type inference issue with Json column updates
       .update({
         settings: updatedSettings,
         updated_at: new Date().toISOString()

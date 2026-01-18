@@ -54,8 +54,7 @@ export async function POST(request: NextRequest) {
     )
 
     // Store customer ID if new
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase.from('organizations') as any)
+    await supabase.from('organizations')
       .update({ stripe_customer_id: customer.id })
       .eq('id', profile.organization_id)
 

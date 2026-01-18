@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import type {
   CampaignStatus,
   CampaignType,
@@ -142,8 +143,10 @@ export async function PUT(
     if (body.leadListIds !== undefined) updates.lead_list_ids = body.leadListIds
     if (body.mailboxIds !== undefined) updates.mailbox_ids = body.mailboxIds
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: campaign, error: updateError } = await (supabase.from('campaigns') as any)
+    // Use admin client to bypass RLS for UPDATE operations
+    const adminClient = createAdminClient()
+    const { data: campaign, error: updateError } = await adminClient
+      .from('campaigns')
       .update(updates)
       .eq('id', id)
       .select()
@@ -225,8 +228,8 @@ export async function DELETE(
     }
 
     // Delete campaign
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error: deleteError } = await (supabase.from('campaigns') as any)
+    const { error: deleteError } = await supabase
+      .from('campaigns')
       .delete()
       .eq('id', id)
       .eq('organization_id', profile.organization_id)

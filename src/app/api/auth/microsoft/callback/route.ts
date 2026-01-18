@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getMicrosoftTokens, getMicrosoftUserInfo } from '@/lib/microsoft'
 import { encryptObject } from '@/lib/encryption'
 
@@ -84,26 +85,27 @@ export async function GET(request: NextRequest) {
       .eq('email', userInfo.email)
       .single() as { data: { id: string } | null }
 
+    // Use admin client to bypass RLS
+    const adminClient = createAdminClient()
+
     if (existingAccount) {
       // Update existing account
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (supabase.from('email_accounts') as any).update({
+      await adminClient.from('email_accounts').update({
         oauth_tokens_encrypted: encryptedCredentials,
-        status: 'active',
+        status: 'active' as const,
         health_score: 100,
         updated_at: new Date().toISOString(),
       }).eq('id', existingAccount.id)
     } else {
       // Create new account
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (supabase.from('email_accounts') as any).insert({
+      await adminClient.from('email_accounts').insert({
         organization_id: profile.organization_id,
         email: userInfo.email,
-        provider: 'microsoft',
+        provider: 'microsoft' as const,
         display_name: userInfo.name,
         oauth_tokens_encrypted: encryptedCredentials,
         daily_limit: 50,
-        status: 'active',
+        status: 'active' as const,
         warmup_enabled: false,
         health_score: 100,
       })

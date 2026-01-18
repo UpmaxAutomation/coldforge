@@ -126,16 +126,16 @@ export async function POST(request: NextRequest) {
     switch (action) {
       case 'mark_read':
         if (replyIds?.length) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (supabase.from('replies') as any)
+          await supabase
+            .from('replies')
             .update({ status: 'read', updated_at: now })
             .in('id', replyIds)
             .eq('organization_id', profile.organization_id)
         }
         if (threadIds?.length) {
           // Mark all replies in threads as read
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (supabase.from('replies') as any)
+          await supabase
+            .from('replies')
             .update({ status: 'read', updated_at: now })
             .in('thread_id', threadIds)
             .eq('organization_id', profile.organization_id)
@@ -145,8 +145,8 @@ export async function POST(request: NextRequest) {
 
       case 'mark_unread':
         if (replyIds?.length) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (supabase.from('replies') as any)
+          await supabase
+            .from('replies')
             .update({ status: 'unread', updated_at: now })
             .in('id', replyIds)
             .eq('organization_id', profile.organization_id)
@@ -155,15 +155,15 @@ export async function POST(request: NextRequest) {
 
       case 'archive':
         if (threadIds?.length) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (supabase.from('threads') as any)
+          await supabase
+            .from('threads')
             .update({ status: 'archived', updated_at: now })
             .in('id', threadIds)
             .eq('organization_id', profile.organization_id)
 
           // Also archive all replies
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (supabase.from('replies') as any)
+          await supabase
+            .from('replies')
             .update({ status: 'archived', updated_at: now })
             .in('thread_id', threadIds)
             .eq('organization_id', profile.organization_id)
@@ -172,8 +172,8 @@ export async function POST(request: NextRequest) {
 
       case 'resolve':
         if (threadIds?.length) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (supabase.from('threads') as any)
+          await supabase
+            .from('threads')
             .update({ status: 'resolved', updated_at: now })
             .in('id', threadIds)
             .eq('organization_id', profile.organization_id)
@@ -182,8 +182,8 @@ export async function POST(request: NextRequest) {
 
       case 'unarchive':
         if (threadIds?.length) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (supabase.from('threads') as any)
+          await supabase
+            .from('threads')
             .update({ status: 'active', updated_at: now })
             .in('id', threadIds)
             .eq('organization_id', profile.organization_id)

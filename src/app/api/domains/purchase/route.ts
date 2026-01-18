@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import {
   purchaseDomain,
   type DomainPurchaseRequest
@@ -12,6 +13,11 @@ import {
   ValidationError,
 } from '@/lib/errors'
 import { handleApiError } from '@/lib/errors/handler'
+import type { Database, Tables } from '@/types/database'
+
+type DomainRow = Tables<'domains'>
+type UserRow = Tables<'users'>
+type DomainInsert = Database['public']['Tables']['domains']['Insert']
 
 // POST /api/domains/purchase - Purchase a new domain
 export async function POST(request: NextRequest) {
@@ -28,7 +34,7 @@ export async function POST(request: NextRequest) {
       .from('users')
       .select('organization_id')
       .eq('id', user.id)
-      .single() as { data: { organization_id: string } | null }
+      .single() as { data: Pick<UserRow, 'organization_id'> | null }
 
     if (!profile?.organization_id) {
       throw new BadRequestError('No organization found')
@@ -74,27 +80,29 @@ export async function POST(request: NextRequest) {
       throw new BadRequestError(purchaseResult.error || 'Domain purchase failed')
     }
 
-    // Store domain in database
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: newDomain, error } = await (supabase.from('domains') as any)
-      .insert({
-        organization_id: profile.organization_id,
-        domain: domain.toLowerCase(),
-        registrar,
-        dns_provider: registrar, // Same as registrar for purchased domains
-        spf_configured: false,
-        dkim_configured: false,
-        dkim_selector: null,
-        dmarc_configured: false,
-        bimi_configured: false,
-        health_status: 'pending',
-        last_health_check: null,
-        auto_purchased: true,
-        purchase_price: null, // Would be set from actual API response
-        expires_at: purchaseResult.expiresAt?.toISOString() || null,
-      })
+    // Store domain in database using admin client to bypass RLS
+    const adminClient = createAdminClient()
+    const domainInsert: DomainInsert = {
+      organization_id: profile.organization_id,
+      domain: domain.toLowerCase(),
+      registrar,
+      dns_provider: registrar, // Same as registrar for purchased domains
+      spf_configured: false,
+      dkim_configured: false,
+      dkim_selector: null,
+      dmarc_configured: false,
+      bimi_configured: false,
+      health_status: 'pending',
+      last_health_check: null,
+      auto_purchased: true,
+      purchase_price: null, // Would be set from actual API response
+      expires_at: purchaseResult.expiresAt?.toISOString() || null,
+    }
+    const { data: newDomain, error } = await ((adminClient
+      .from('domains') as ReturnType<typeof adminClient.from>)
+      .insert(domainInsert)
       .select()
-      .single()
+      .single() as unknown as Promise<{ data: DomainRow | null; error: Error | null }>)
 
     if (error) {
       if ((error as { code?: string }).code === '23505') {

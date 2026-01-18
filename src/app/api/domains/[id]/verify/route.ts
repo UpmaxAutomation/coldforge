@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { checkDnsHealth, DnsHealthResult } from '@/lib/dns'
+import type { Database, Tables } from '@/types/database'
 
 interface RouteContext {
   params: Promise<{ id: string }>
 }
 
-// DomainResponse interface for type reference (used in comments)
-// interface DomainResponse { id: string; domain: string; dkim_selector: string | null; ... }
+type DomainRow = Tables<'domains'>
+type DomainUpdate = Database['public']['Tables']['domains']['Update']
 
 // Check tracking domain CNAME
 async function checkTrackingDomain(domain: string): Promise<{
@@ -119,7 +120,7 @@ export async function POST(_request: NextRequest, context: RouteContext) {
       .from('domains')
       .select('domain, dkim_selector')
       .eq('id', id)
-      .single() as { data: { domain: string; dkim_selector: string | null } | null; error: unknown }
+      .single() as unknown as { data: Pick<DomainRow, 'domain' | 'dkim_selector'> | null; error: Error | null }
 
     if (fetchError || !domain) {
       return NextResponse.json({ error: 'Domain not found' }, { status: 404 })
@@ -145,19 +146,20 @@ export async function POST(_request: NextRequest, context: RouteContext) {
     }
 
     // Update domain with health results
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase.from('domains') as any)
-      .update({
-        spf_configured: dnsHealth.spf.configured,
-        dkim_configured: dnsHealth.dkim.configured,
-        dkim_selector: dnsHealth.dkim.selector,
-        dmarc_configured: dnsHealth.dmarc.configured,
-        health_status: healthStatus,
-        health_score: healthScore,
-        last_health_check: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', id)
+    const healthUpdate: DomainUpdate = {
+      spf_configured: dnsHealth.spf.configured,
+      dkim_configured: dnsHealth.dkim.configured,
+      dkim_selector: dnsHealth.dkim.selector,
+      dmarc_configured: dnsHealth.dmarc.configured,
+      health_status: healthStatus,
+      health_score: healthScore,
+      last_health_check: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+    await ((supabase
+      .from('domains') as ReturnType<typeof supabase.from>)
+      .update(healthUpdate)
+      .eq('id', id) as unknown as Promise<{ error: Error | null }>)
 
     // Build verification response
     const verification = {

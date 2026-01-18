@@ -3,6 +3,22 @@ export * from './types'
 export * from './templates'
 export * from './scheduler'
 
+// Comprehensive Warmup System (Phase 13.3)
+export * from './pool-manager'
+export * from './slow-ramp'
+export * from './ai-replies'
+export * from './engagement-engine'
+export * from './postmaster-tools'
+export * from './orchestrator'
+
+// Re-export key types and functions for convenience
+export { getPoolManager, initializePoolManager } from './pool-manager'
+export { getSlowRampController, createSlowRampController } from './slow-ramp'
+export { generateAIReply, batchGenerateReplies } from './ai-replies'
+export { getEngagementEngine, createEngagementEngine } from './engagement-engine'
+export { getPostmasterClient, initializePostmasterTools } from './postmaster-tools'
+export { getWarmupOrchestrator, initializeWarmupOrchestrator } from './orchestrator'
+
 import type { WarmupConfig, WarmupStats } from './types'
 import {
   calculateWarmupStats,

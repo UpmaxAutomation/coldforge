@@ -121,8 +121,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     updates.updated_at = new Date().toISOString()
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: account, error } = await (supabase.from('email_accounts') as any)
+    const { data: account, error } = await supabase
+      .from('email_accounts')
       .update(updates)
       .eq('id', id)
       .select('id, email, provider, display_name, daily_limit, status, warmup_enabled, health_score, created_at, updated_at')
@@ -179,8 +179,8 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       .eq('id', user.id)
       .single() as { data: { organization_id: string } | null }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (supabase.from('email_accounts') as any)
+    const { error } = await supabase
+      .from('email_accounts')
       .delete()
       .eq('id', id)
 
@@ -311,11 +311,11 @@ export async function POST(_request: NextRequest, context: RouteContext) {
 
     // Update health score based on test result
     const healthScore = testResult.success ? 100 : 0
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase.from('email_accounts') as any)
+    await supabase
+      .from('email_accounts')
       .update({
         health_score: healthScore,
-        status: testResult.success ? 'active' : 'error',
+        status: testResult.success ? ('active' as const) : ('error' as const),
         last_error: testResult.success ? null : testResult.error,
         updated_at: new Date().toISOString(),
       })

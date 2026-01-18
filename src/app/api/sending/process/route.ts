@@ -10,7 +10,7 @@ import {
   DEFAULT_THROTTLE_CONFIG,
   DEFAULT_SCHEDULE_WINDOWS,
 } from '@/lib/sending'
-import { processTemplate } from '@/lib/campaigns'
+import { generateUniqueEmailContent } from '@/lib/campaigns'
 import {
   sendingLimiter,
   applyRateLimit,
@@ -102,8 +102,8 @@ export async function POST(request: NextRequest) {
     for (const job of jobs) {
       try {
         // Mark as processing
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (supabase.from('email_jobs') as any)
+        await supabase
+          .from('email_jobs')
           .update({
             status: 'processing',
             attempts: job.attempts + 1,
@@ -131,8 +131,8 @@ export async function POST(request: NextRequest) {
 
         if (!campaign || campaign.status !== 'active') {
           // Cancel job if campaign is not active
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (supabase.from('email_jobs') as any)
+          await supabase
+            .from('email_jobs')
             .update({
               status: 'cancelled',
               error: 'Campaign not active',
@@ -145,8 +145,8 @@ export async function POST(request: NextRequest) {
         // Check schedule window
         if (!isWithinScheduleWindow(DEFAULT_SCHEDULE_WINDOWS, campaign.settings.timezone)) {
           // Reschedule for next window
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (supabase.from('email_jobs') as any)
+          await supabase
+            .from('email_jobs')
             .update({
               status: 'scheduled',
               updated_at: new Date().toISOString(),
@@ -178,8 +178,8 @@ export async function POST(request: NextRequest) {
           }
 
         if (!mailbox || !mailbox.smtp_credentials) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (supabase.from('email_jobs') as any)
+          await supabase
+            .from('email_jobs')
             .update({
               status: 'failed',
               error: 'Mailbox not configured',
@@ -204,8 +204,8 @@ export async function POST(request: NextRequest) {
         if (throttleResult.throttled) {
           // Reschedule
           const rescheduleTime = new Date(Date.now() + (throttleResult.retryAfter || 3600) * 1000)
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (supabase.from('email_jobs') as any)
+          await supabase
+            .from('email_jobs')
             .update({
               status: 'scheduled',
               scheduled_at: rescheduleTime.toISOString(),
@@ -234,8 +234,8 @@ export async function POST(request: NextRequest) {
           }
 
         if (!lead) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (supabase.from('email_jobs') as any)
+          await supabase
+            .from('email_jobs')
             .update({
               status: 'failed',
               error: 'Lead not found',
@@ -268,8 +268,8 @@ export async function POST(request: NextRequest) {
         const variant = step?.variants.find(v => v.id === job.variant_id) || step?.variants[0]
 
         if (!variant) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (supabase.from('email_jobs') as any)
+          await supabase
+            .from('email_jobs')
             .update({
               status: 'failed',
               error: 'Variant not found',
@@ -295,8 +295,15 @@ export async function POST(request: NextRequest) {
           email: mailbox.email,
         }
 
-        const subject = processTemplate(variant.subject, leadData, senderData)
-        const body = processTemplate(variant.body, leadData, senderData)
+        // Generate unique email content with spintax variations
+        // Uses deterministic seed from campaignId + lead.email for consistent variations per recipient
+        const { subject, body } = generateUniqueEmailContent(
+          variant.subject,
+          variant.body,
+          leadData,
+          senderData,
+          job.campaign_id
+        )
 
         // Generate message ID
         const domain = mailbox.email.split('@')[1] ?? 'unknown'
@@ -333,8 +340,8 @@ export async function POST(request: NextRequest) {
 
         if (sendSuccess) {
           // Mark as sent
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (supabase.from('email_jobs') as any)
+          await supabase
+            .from('email_jobs')
             .update({
               status: 'sent',
               message_id: messageId,
@@ -344,8 +351,8 @@ export async function POST(request: NextRequest) {
             .eq('id', job.id)
 
           // Update mailbox sent count
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (supabase.from('mailboxes') as any)
+          await supabase
+            .from('mailboxes')
             .update({
               emails_sent_today: mailbox.emails_sent_today + 1,
               updated_at: new Date().toISOString(),
@@ -353,8 +360,8 @@ export async function POST(request: NextRequest) {
             .eq('id', job.mailbox_id)
 
           // Update lead status
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (supabase.from('leads') as any)
+          await supabase
+            .from('leads')
             .update({
               status: 'contacted',
               last_contacted_at: new Date().toISOString(),
@@ -363,8 +370,7 @@ export async function POST(request: NextRequest) {
             .eq('id', job.lead_id)
 
           // Update campaign stats
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (supabase.rpc as any)('increment_campaign_stat', {
+          await supabase.rpc('increment_campaign_stat', {
             p_campaign_id: job.campaign_id,
             p_stat: 'contacted',
           })
@@ -373,8 +379,8 @@ export async function POST(request: NextRequest) {
         } else {
           // Handle failure
           if (job.attempts >= job.max_attempts) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            await (supabase.from('email_jobs') as any)
+            await supabase
+              .from('email_jobs')
               .update({
                 status: 'failed',
                 error: 'Max attempts reached',
@@ -384,8 +390,8 @@ export async function POST(request: NextRequest) {
             results.failed++
           } else {
             // Reschedule
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            await (supabase.from('email_jobs') as any)
+            await supabase
+              .from('email_jobs')
               .update({
                 status: 'scheduled',
                 scheduled_at: new Date(Date.now() + 300000).toISOString(), // 5 min
@@ -402,8 +408,8 @@ export async function POST(request: NextRequest) {
         results.errors.push(`Job ${job.id}: ${jobError}`)
 
         // Mark as failed
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (supabase.from('email_jobs') as any)
+        await supabase
+          .from('email_jobs')
           .update({
             status: 'failed',
             error: jobError instanceof Error ? jobError.message : 'Unknown error',

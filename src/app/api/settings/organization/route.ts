@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import type { Json } from '@/types/database'
 import { logAuditEventAsync, getRequestMetadata } from '@/lib/audit'
 
@@ -26,6 +27,122 @@ interface TeamMember {
   created_at: string
 }
 
+// POST /api/settings/organization - Create organization for user without one
+export async function POST(request: NextRequest) {
+  try {
+    const supabase = await createClient()
+
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Check if user already has an organization
+    const { data: existingProfile } = await supabase
+      .from('users')
+      .select('organization_id')
+      .eq('id', user.id)
+      .single() as { data: { organization_id: string | null } | null }
+
+    if (existingProfile?.organization_id) {
+      return NextResponse.json(
+        { error: 'User already has an organization' },
+        { status: 400 }
+      )
+    }
+
+    const body = await request.json()
+    const { name } = body
+
+    if (!name || name.trim().length === 0) {
+      return NextResponse.json(
+        { error: 'Organization name is required' },
+        { status: 400 }
+      )
+    }
+
+    // Use admin client to bypass RLS
+    const adminClient = createAdminClient()
+
+    // Create unique slug
+    const baseSlug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+    const slug = `${baseSlug}-${user.id.slice(0, 8)}`
+
+    // Create organization using admin client (bypasses RLS)
+    const { data: organization, error: orgError } = await adminClient
+      .from('organizations')
+      .insert({
+        name: name.trim(),
+        slug,
+        plan: 'starter',
+        settings: {}
+      })
+      .select('id, name, slug, plan')
+      .single()
+
+    if (orgError) {
+      console.error('Failed to create organization:', orgError)
+      return NextResponse.json(
+        { error: 'Failed to create organization' },
+        { status: 500 }
+      )
+    }
+
+    // Check if user profile exists
+    const { data: existingUser } = await adminClient
+      .from('users')
+      .select('id')
+      .eq('id', user.id)
+      .single()
+
+    if (existingUser) {
+      // Update existing profile
+      const { error: updateError } = await adminClient
+        .from('users')
+        .update({
+          organization_id: organization.id,
+          role: 'owner'
+        })
+        .eq('id', user.id)
+
+      if (updateError) {
+        console.error('Failed to update user profile:', updateError)
+      }
+    } else {
+      // Create new profile
+      const { error: insertError } = await adminClient
+        .from('users')
+        .insert({
+          id: user.id,
+          organization_id: organization.id,
+          email: user.email!,
+          full_name: user.user_metadata?.full_name || null,
+          role: 'owner',
+          settings: {}
+        })
+
+      if (insertError) {
+        console.error('Failed to create user profile:', insertError)
+      }
+    }
+
+    return NextResponse.json({
+      organization: {
+        id: organization.id,
+        name: organization.name,
+        slug: organization.slug,
+        plan: organization.plan
+      }
+    })
+  } catch (error) {
+    console.error('Failed to create organization:', error)
+    return NextResponse.json(
+      { error: 'Failed to create organization' },
+      { status: 500 }
+    )
+  }
+}
+
 // GET /api/settings/organization - Get organization details
 export async function GET() {
   try {
@@ -44,7 +161,11 @@ export async function GET() {
       .single() as { data: UserProfile | null }
 
     if (!profile?.organization_id) {
-      return NextResponse.json({ error: 'No organization found' }, { status: 400 })
+      // Return special response indicating user needs to create org
+      return NextResponse.json({
+        needs_organization: true,
+        message: 'Please create an organization to continue'
+      }, { status: 200 })
     }
 
     // Get organization details
@@ -133,15 +254,6 @@ export async function PATCH(request: NextRequest) {
 
     const currentSettings = (currentOrg?.settings as Record<string, unknown>) || {}
 
-    // Build update data
-    const updateData: Record<string, unknown> = {
-      updated_at: new Date().toISOString()
-    }
-
-    if (name !== undefined) {
-      updateData.name = name
-    }
-
     // Update settings
     const newSettings: Record<string, unknown> = { ...currentSettings }
 
@@ -157,12 +269,26 @@ export async function PATCH(request: NextRequest) {
       newSettings.default_daily_limit = Math.min(Math.max(1, default_daily_limit), 500)
     }
 
-    updateData.settings = newSettings
+    // Build update object dynamically
+    interface OrgUpdate {
+      updated_at: string
+      name?: string
+      settings: Json
+    }
 
-    // Update organization
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: organization, error } = await (supabase.from('organizations') as any)
-      .update(updateData)
+    const updateObj: OrgUpdate = {
+      updated_at: new Date().toISOString(),
+      settings: newSettings as unknown as Json
+    }
+
+    if (name !== undefined) {
+      updateObj.name = name
+    }
+
+    const { data: organization, error } = await supabase
+      .from('organizations')
+      // @ts-expect-error - Supabase type inference issue with Json column updates
+      .update(updateObj)
       .eq('id', profile.organization_id)
       .select('id, name, slug, plan, settings')
       .single() as { data: Organization | null; error: { code?: string; message?: string } | null }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import type { Tables, InsertTables } from '@/types/database'
 
 type CampaignSequence = Tables<'campaign_sequences'>
@@ -189,9 +190,10 @@ export async function POST(
       condition_type: body.condition || 'always',
     }
 
-    // Use type assertion to bypass RLS-restricted types
-    const insertResult = await (supabase
-      .from('campaign_sequences') as ReturnType<typeof supabase.from>)
+    // Use admin client to bypass RLS for INSERT operations
+    const adminClient = createAdminClient()
+    const insertResult = await adminClient
+      .from('campaign_sequences')
       .insert(insertData as InsertTables<'campaign_sequences'>)
       .select()
       .single()
@@ -286,8 +288,11 @@ export async function PUT(
       )
     }
 
+    // Use admin client for delete and insert operations
+    const adminClient = createAdminClient()
+
     // Delete existing steps
-    await supabase
+    await adminClient
       .from('campaign_sequences')
       .delete()
       .eq('campaign_id', campaignId)
@@ -308,9 +313,9 @@ export async function PUT(
         }
       })
 
-      // Use type assertion to bypass RLS-restricted types
-      const insertResult = await (supabase
-        .from('campaign_sequences') as ReturnType<typeof supabase.from>)
+      // Use admin client to bypass RLS for INSERT operations
+      const insertResult = await adminClient
+        .from('campaign_sequences')
         .insert(stepsToInsert as InsertTables<'campaign_sequences'>[])
 
       if (insertResult.error) {
@@ -384,8 +389,11 @@ export async function DELETE(
       )
     }
 
+    // Use admin client for delete and update operations
+    const adminClient = createAdminClient()
+
     // Delete the step
-    const deleteResult = await supabase
+    const deleteResult = await adminClient
       .from('campaign_sequences')
       .delete()
       .eq('id', stepId)
@@ -409,9 +417,9 @@ export async function DELETE(
       for (let i = 0; i < remainingSteps.length; i++) {
         const step = remainingSteps[i]
         if (step && step.step_number !== i + 1) {
-          // Use type assertion to bypass RLS-restricted types
-          await (supabase
-            .from('campaign_sequences') as ReturnType<typeof supabase.from>)
+          // Use admin client to bypass RLS for UPDATE operations
+          await adminClient
+            .from('campaign_sequences')
             .update({ step_number: i + 1 } as Record<string, unknown>)
             .eq('id', step.id)
         }

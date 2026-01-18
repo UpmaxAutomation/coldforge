@@ -163,8 +163,7 @@ export async function PUT(
       updates.warmup_days_in_stage = 0
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error: updateError } = await (supabase.from('mailboxes') as any)
+    const { error: updateError } = await supabase.from('mailboxes')
       .update(updates)
       .eq('id', mailboxId)
 

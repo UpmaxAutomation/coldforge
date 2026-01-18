@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 // GET /api/leads/lists - Get all lead lists
 export async function GET() {
@@ -23,8 +24,7 @@ export async function GET() {
     }
 
     // Get all lists
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: lists, error } = await (supabase.from('lead_lists') as any)
+    const { data: lists, error } = await supabase.from('lead_lists')
       .select('*')
       .eq('organization_id', userData.organization_id)
       .order('created_at', { ascending: false })
@@ -81,9 +81,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No organization found' }, { status: 400 })
     }
 
-    // Create list
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: list, error: createError } = await (supabase.from('lead_lists') as any)
+    // Create list using admin client to bypass RLS
+    const adminClient = createAdminClient()
+    const { data: list, error: createError } = await adminClient.from('lead_lists')
       .insert({
         organization_id: userData.organization_id,
         name,

@@ -132,9 +132,8 @@ export async function GET(
     // Mark unread replies as read
     const unreadReplyIds = replies?.filter(r => r.status === 'unread').map(r => r.id) || []
     if (unreadReplyIds.length > 0) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (supabase.from('replies') as any)
-        .update({ status: 'read', updated_at: new Date().toISOString() })
+      await supabase.from('replies')
+        .update({ status: 'read' as const, updated_at: new Date().toISOString() })
         .in('id', unreadReplyIds)
     }
 
@@ -298,8 +297,7 @@ export async function PATCH(
     if (status !== undefined) updates.status = status
     if (assignedTo !== undefined) updates.assigned_to = assignedTo
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: thread, error } = await (supabase.from('threads') as any)
+    const { data: thread, error } = await supabase.from('threads')
       .update(updates)
       .eq('id', id)
       .select()
@@ -318,8 +316,7 @@ export async function PATCH(
       if (category !== undefined) replyUpdates.category = category
       if (sentiment !== undefined) replyUpdates.sentiment = sentiment
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (supabase.from('replies') as any)
+      await supabase.from('replies')
         .update(replyUpdates)
         .eq('thread_id', id)
     }

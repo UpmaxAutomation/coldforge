@@ -16,6 +16,18 @@ export default async function DashboardLayout({
     redirect('/login')
   }
 
+  // Check if user has an organization
+  const { data: profile } = await supabase
+    .from('users')
+    .select('organization_id')
+    .eq('id', user.id)
+    .single()
+
+  // Redirect to onboarding if no organization
+  if (!profile?.organization_id) {
+    redirect('/onboarding')
+  }
+
   return (
     <SidebarProvider>
       <div className="relative flex min-h-screen w-full">

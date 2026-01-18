@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import type { Tables, InsertTables } from '@/types/database'
 
 type Lead = Tables<'leads'>
@@ -252,9 +253,10 @@ export async function POST(
       status: 'pending' as const,
     }))
 
-    // Use type assertion to bypass RLS-restricted types
-    const insertResult = await (supabase
-      .from('campaign_leads') as ReturnType<typeof supabase.from>)
+    // Use admin client to bypass RLS for INSERT operations
+    const adminClient = createAdminClient()
+    const insertResult = await adminClient
+      .from('campaign_leads')
       .insert(campaignLeadsToInsert as InsertTables<'campaign_leads'>[])
 
     if (insertResult.error) {
@@ -270,9 +272,9 @@ export async function POST(
 
     const totalLeads = statsResult.data?.length || 0
 
-    // Use type assertion to bypass RLS-restricted types
-    await (supabase
-      .from('campaigns') as ReturnType<typeof supabase.from>)
+    // Use admin client to bypass RLS for UPDATE operations
+    await adminClient
+      .from('campaigns')
       .update({
         stats: {
           totalLeads,

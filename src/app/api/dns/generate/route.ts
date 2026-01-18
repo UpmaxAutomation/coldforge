@@ -59,8 +59,7 @@ export async function POST(request: NextRequest) {
 
     if (profile) {
       // Update domain with generated DNS config
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (supabase.from('domains') as any)
+      await supabase.from('domains')
         .update({
           dns_config: dnsSetup,
           updated_at: new Date().toISOString()

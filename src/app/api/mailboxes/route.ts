@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import {
   createMailboxSchema,
   listMailboxesQuerySchema,
@@ -201,9 +202,10 @@ export async function POST(request: NextRequest) {
     // TODO: If provider is google_workspace or microsoft_365, provision via API
     // For now, just create the database record
 
-    // Create mailbox record
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: mailbox, error: createError } = await (supabase.from('mailboxes') as any)
+    // Create mailbox record using admin client to bypass RLS
+    const adminClient = createAdminClient()
+    const { data: mailbox, error: createError } = await adminClient
+      .from('mailboxes')
       .insert({
         email,
         domain_id: domainId,
@@ -217,7 +219,7 @@ export async function POST(request: NextRequest) {
         warmup_stage: 0,
       })
       .select()
-      .single() as { data: MailboxRecord | null; error: Error | null }
+      .single()
 
     if (createError) {
       throw new DatabaseError('Failed to create mailbox', { originalError: createError.message })

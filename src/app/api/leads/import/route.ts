@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { invalidateLeadsCache } from '@/lib/cache/queries'
 
 interface LeadImportRow {
@@ -56,8 +57,8 @@ export async function POST(request: NextRequest) {
 
     // If listId provided, verify it exists and belongs to org
     if (listId) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data: list } = await (supabase.from('lead_lists') as any)
+      const { data: list } = await supabase
+        .from('lead_lists')
         .select('id')
         .eq('id', listId)
         .eq('organization_id', userData.organization_id)
@@ -73,6 +74,9 @@ export async function POST(request: NextRequest) {
     let updated = 0
     const errors: string[] = []
 
+    // Use admin client for INSERT/UPDATE operations to bypass RLS
+    const adminClient = createAdminClient()
+
     // Process in batches of 100
     const batchSize = 100
     for (let i = 0; i < leads.length; i += batchSize) {
@@ -80,9 +84,9 @@ export async function POST(request: NextRequest) {
 
       for (const lead of batch) {
         try {
-          // Check for existing lead by email
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const { data: existing } = await (supabase.from('leads') as any)
+          // Check for existing lead by email (use regular client for reads)
+          const { data: existing } = await supabase
+            .from('leads')
             .select('id')
             .eq('organization_id', userData.organization_id)
             .eq('email', lead.email.toLowerCase().trim())
@@ -95,9 +99,9 @@ export async function POST(request: NextRequest) {
             }
 
             if (updateExisting) {
-              // Update existing lead
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const { error: updateError } = await (supabase.from('leads') as any)
+              // Update existing lead using admin client
+              const { error: updateError } = await adminClient
+                .from('leads')
                 .update({
                   first_name: lead.firstName || null,
                   last_name: lead.lastName || null,
@@ -120,9 +124,9 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          // Insert new lead
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const { error: insertError } = await (supabase.from('leads') as any)
+          // Insert new lead using admin client
+          const { error: insertError } = await adminClient
+            .from('leads')
             .insert({
               organization_id: userData.organization_id,
               email: lead.email.toLowerCase().trim(),
@@ -150,14 +154,15 @@ export async function POST(request: NextRequest) {
 
     // Update list lead count if listId provided
     if (listId) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { count } = await (supabase.from('leads') as any)
+      const { count } = await supabase
+        .from('leads')
         .select('*', { count: 'exact', head: true })
         .eq('organization_id', userData.organization_id)
         .eq('list_id', listId)
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (supabase.from('lead_lists') as any)
+      // Use admin client for update to bypass RLS
+      await adminClient
+        .from('lead_lists')
         .update({
           lead_count: count || 0,
           updated_at: new Date().toISOString(),

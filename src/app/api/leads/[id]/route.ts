@@ -28,8 +28,8 @@ export async function GET(
     }
 
     // Get lead
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: lead, error } = await (supabase.from('leads') as any)
+    const { data: lead, error } = await supabase
+      .from('leads')
       .select('*')
       .eq('id', id)
       .eq('organization_id', userData.organization_id)
@@ -94,8 +94,8 @@ export async function PATCH(
     }
 
     // Verify lead belongs to organization
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: existing } = await (supabase.from('leads') as any)
+    const { data: existing } = await supabase
+      .from('leads')
       .select('id')
       .eq('id', id)
       .eq('organization_id', userData.organization_id)
@@ -120,8 +120,8 @@ export async function PATCH(
     if (body.listId !== undefined) updates.list_id = body.listId
     if (body.status !== undefined) updates.status = body.status
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: lead, error: updateError } = await (supabase.from('leads') as any)
+    const { data: lead, error: updateError } = await supabase
+      .from('leads')
       .update(updates)
       .eq('id', id)
       .select()
@@ -186,8 +186,8 @@ export async function DELETE(
     }
 
     // Verify lead exists and belongs to organization
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: existing } = await (supabase.from('leads') as any)
+    const { data: existing } = await supabase
+      .from('leads')
       .select('id')
       .eq('id', id)
       .eq('organization_id', userData.organization_id)
@@ -198,8 +198,8 @@ export async function DELETE(
     }
 
     // Delete lead
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error: deleteError } = await (supabase.from('leads') as any)
+    const { error: deleteError } = await supabase
+      .from('leads')
       .delete()
       .eq('id', id)
       .eq('organization_id', userData.organization_id)

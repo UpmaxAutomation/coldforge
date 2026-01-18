@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { encryptObject } from '@/lib/encryption'
 import { logAuditEventAsync, getRequestMetadata } from '@/lib/audit'
 import {
@@ -157,9 +158,10 @@ export async function POST(request: NextRequest) {
       insertData.oauth_tokens_encrypted = encryptObject(oauth_tokens)
     }
 
-    // Create email account
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: account, error } = await (supabase.from('email_accounts') as any)
+    // Create email account using admin client to bypass RLS
+    const adminClient = createAdminClient()
+    const { data: account, error } = await adminClient
+      .from('email_accounts')
       .insert(insertData)
       .select('id, email, provider, display_name, daily_limit, status, warmup_enabled, health_score, created_at')
       .single() as { data: EmailAccountResponse | null; error: { code?: string; message?: string } | null }

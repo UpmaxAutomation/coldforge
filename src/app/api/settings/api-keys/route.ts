@@ -127,13 +127,16 @@ export async function POST(request: NextRequest) {
     const updatedKeys = [...existingKeys, newApiKey]
 
     // Update user settings
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (supabase.from('users') as any)
+    const newSettings = {
+      ...userSettings,
+      api_keys: updatedKeys
+    } as unknown as Json
+
+    const { error } = await supabase
+      .from('users')
+      // @ts-expect-error - Supabase type inference issue with Json column updates
       .update({
-        settings: {
-          ...userSettings,
-          api_keys: updatedKeys
-        },
+        settings: newSettings,
         updated_at: new Date().toISOString()
       })
       .eq('id', user.id)
@@ -213,13 +216,16 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Update user settings
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (supabase.from('users') as any)
+    const deleteSettings = {
+      ...userSettings,
+      api_keys: updatedKeys
+    } as unknown as Json
+
+    const { error } = await supabase
+      .from('users')
+      // @ts-expect-error - Supabase type inference issue with Json column updates
       .update({
-        settings: {
-          ...userSettings,
-          api_keys: updatedKeys
-        },
+        settings: deleteSettings,
         updated_at: new Date().toISOString()
       })
       .eq('id', user.id)

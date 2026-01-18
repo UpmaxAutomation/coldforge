@@ -37,8 +37,7 @@ export async function POST(request: NextRequest) {
       const dnsStatus = advancedValidation.overall === 'valid' ? 'configured' :
                        advancedValidation.overall === 'partial' ? 'partial' : 'pending'
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (supabase.from('domains') as any)
+      await supabase.from('domains')
         .update({
           dns_status: dnsStatus,
           dns_health: basicHealth,
