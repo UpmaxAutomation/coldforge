@@ -294,3 +294,117 @@ export async function getPromotionCode(code: string): Promise<Stripe.PromotionCo
     return null
   }
 }
+
+// ============================================================================
+// Domain Purchase Checkout
+// ============================================================================
+
+export interface DomainCheckoutItem {
+  domain: string
+  price: number // in cents
+  years: number
+}
+
+// Create checkout session for domain purchase (one-time payment)
+export async function createDomainCheckoutSession(
+  customerId: string,
+  organizationId: string,
+  domains: DomainCheckoutItem[],
+  successUrl: string,
+  cancelUrl: string
+): Promise<Stripe.Checkout.Session> {
+  // Create line items for each domain
+  const lineItems = domains.map((item) => ({
+    price_data: {
+      currency: 'usd',
+      product_data: {
+        name: `Domain: ${item.domain}`,
+        description: `${item.years} year registration`,
+        metadata: {
+          type: 'domain',
+          domain: item.domain,
+          years: String(item.years),
+        },
+      },
+      unit_amount: item.price, // Price in cents
+    },
+    quantity: 1,
+  }))
+
+  // Calculate total for metadata
+  const totalDomains = domains.length
+  const totalPrice = domains.reduce((sum, d) => sum + d.price, 0)
+
+  return stripe.checkout.sessions.create({
+    customer: customerId,
+    mode: 'payment', // One-time payment, not subscription
+    payment_method_types: ['card'],
+    line_items: lineItems,
+    metadata: {
+      type: 'domain_purchase',
+      organizationId,
+      domains: JSON.stringify(domains.map((d) => d.domain)),
+      totalDomains: String(totalDomains),
+    },
+    success_url: successUrl,
+    cancel_url: cancelUrl,
+    billing_address_collection: 'required',
+    // Allow entering billing details for invoicing
+    invoice_creation: {
+      enabled: true,
+      invoice_data: {
+        description: `Domain registration: ${domains.map((d) => d.domain).join(', ')}`,
+        metadata: {
+          type: 'domain_purchase',
+          organizationId,
+        },
+      },
+    },
+  })
+}
+
+// Create checkout session for single domain
+export async function createSingleDomainCheckout(
+  customerId: string,
+  organizationId: string,
+  domain: string,
+  priceInCents: number,
+  years: number,
+  successUrl: string,
+  cancelUrl: string
+): Promise<Stripe.Checkout.Session> {
+  return createDomainCheckoutSession(
+    customerId,
+    organizationId,
+    [{ domain, price: priceInCents, years }],
+    successUrl,
+    cancelUrl
+  )
+}
+
+// Handle successful domain purchase (called from webhook)
+export interface DomainPurchaseWebhookData {
+  sessionId: string
+  customerId: string
+  organizationId: string
+  domains: string[]
+  totalAmountPaid: number
+  paymentIntentId: string
+}
+
+export function parseDomainCheckoutSession(
+  session: Stripe.Checkout.Session
+): DomainPurchaseWebhookData | null {
+  if (session.metadata?.type !== 'domain_purchase') {
+    return null
+  }
+
+  return {
+    sessionId: session.id,
+    customerId: session.customer as string,
+    organizationId: session.metadata.organizationId,
+    domains: JSON.parse(session.metadata.domains || '[]'),
+    totalAmountPaid: session.amount_total || 0,
+    paymentIntentId: session.payment_intent as string,
+  }
+}

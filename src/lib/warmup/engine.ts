@@ -2,6 +2,17 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createTransporter, sendEmail } from '@/lib/sending/sender'
 import { generateWarmupContent, generateReplyContent } from './content'
+import { decrypt, isEncrypted, decryptObject } from '@/lib/encryption'
+
+// Type for encrypted SMTP credentials stored in database
+interface StoredSmtpCredentials {
+  password: string
+  imap?: {
+    host: string
+    port: number
+    password: string
+  } | null
+}
 import type { EmailContent } from '@/lib/sending/types'
 import type { Tables, InsertTables, UpdateTables } from '@/types/database'
 
@@ -292,6 +303,31 @@ export async function executeWarmupSend(
   }
 
   try {
+    // Decrypt SMTP password - handles both JSON object and plain string formats
+    let smtpPassword: string
+    try {
+      if (!isEncrypted(fromAccount.smtp_password_encrypted)) {
+        // Not encrypted, use as-is
+        smtpPassword = fromAccount.smtp_password_encrypted
+      } else {
+        // Decrypt and check if it's a JSON object or plain string
+        const decrypted = decrypt(fromAccount.smtp_password_encrypted)
+        try {
+          // Try to parse as JSON (new format: {password: "..."})
+          const credentials = JSON.parse(decrypted) as StoredSmtpCredentials
+          smtpPassword = credentials.password
+        } catch {
+          // Not JSON, use as plain password (legacy format)
+          smtpPassword = decrypted
+        }
+      }
+    } catch (decryptError) {
+      return {
+        success: false,
+        error: 'Failed to decrypt SMTP password',
+      }
+    }
+
     // Create SMTP transporter
     const transporter = createTransporter({
       host: fromAccount.smtp_host,
@@ -299,7 +335,7 @@ export async function executeWarmupSend(
       secure: fromAccount.smtp_port === 465,
       auth: {
         user: fromAccount.smtp_username,
-        pass: fromAccount.smtp_password_encrypted,
+        pass: smtpPassword,
       },
     })
 

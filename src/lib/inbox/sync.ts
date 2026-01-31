@@ -6,6 +6,7 @@
  */
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { decrypt } from '@/lib/encryption'
 import type { Tables, InsertTables, UpdateTables, Json } from '@/types/database'
 import {
@@ -494,6 +495,11 @@ async function processMessages(
         )
         if (threadResult.created) threadsCreated++
         if (threadResult.updated) threadsUpdated++
+
+        // Link inbound replies to campaigns (auto-pause sequence on reply)
+        if (normalized.direction === 'inbound') {
+          await linkReplyToCampaign(normalized, organizationId, accountId)
+        }
       }
     }
   }
@@ -567,6 +573,159 @@ async function upsertThread(
   await supabase.from('threads').insert(insertData)
 
   return { created: true, updated: false }
+}
+
+/**
+ * Link inbound reply to campaign and update lead status
+ *
+ * When a reply comes in, we need to:
+ * 1. Find the original outbound message via In-Reply-To or References headers
+ * 2. Check if that message was part of a campaign (has campaign_id/lead_id)
+ * 3. Update campaign_leads.status to 'replied' to stop the sequence
+ */
+async function linkReplyToCampaign(
+  message: NormalizedMessage,
+  organizationId: string,
+  accountId: string
+): Promise<{ linked: boolean; campaignId?: string; leadId?: string }> {
+  // Only process inbound messages with reply context
+  if (message.direction !== 'inbound') {
+    return { linked: false }
+  }
+
+  // Get message IDs to look up (from In-Reply-To and References)
+  const referencedIds: string[] = []
+
+  if (message.inReplyTo) {
+    referencedIds.push(message.inReplyTo)
+  }
+
+  if (message.references && Array.isArray(message.references)) {
+    referencedIds.push(...message.references)
+  }
+
+  if (referencedIds.length === 0) {
+    return { linked: false }
+  }
+
+  try {
+    const adminClient = createAdminClient()
+
+    console.log(`[InboxSync] Looking up sent emails for message IDs: ${referencedIds.join(', ')}`)
+
+    // Look up sent emails that match the referenced message IDs
+    // campaign_id and lead_id are stored directly on sent_emails
+    const { data: sentEmails, error: sentEmailsError } = await adminClient
+      .from('sent_emails')
+      .select('id, message_id, campaign_id, lead_id')
+      .eq('organization_id', organizationId)
+      .in('message_id', referencedIds)
+
+    if (sentEmailsError) {
+      console.error('[InboxSync] Error querying sent_emails:', sentEmailsError)
+    }
+
+    if (sentEmails && sentEmails.length > 0) {
+      // Found sent email(s) - get campaign and lead info
+      for (const sentEmail of sentEmails) {
+        const campaignId = sentEmail.campaign_id
+        const leadId = sentEmail.lead_id
+
+        if (campaignId && leadId) {
+          console.log(`[InboxSync] Found matching sent email, linking to campaign ${campaignId}, lead ${leadId}`)
+          await updateCampaignLeadStatus(campaignId, leadId, 'replied')
+          return { linked: true, campaignId, leadId }
+        }
+      }
+    }
+
+    // Fallback: check inbox_messages for outbound messages with campaign headers in raw_data
+    const { data: outboundMessages } = await adminClient
+      .from('inbox_messages')
+      .select('id, message_id, raw_data')
+      .eq('organization_id', organizationId)
+      .eq('direction', 'outbound')
+      .in('message_id', referencedIds)
+
+    if (outboundMessages && outboundMessages.length > 0) {
+      // Check raw_data for campaign headers
+      for (const outbound of outboundMessages) {
+        const rawData = outbound.raw_data as Record<string, unknown> | null
+        if (rawData?.headers) {
+          const headers = rawData.headers as Record<string, string>
+          const campaignId = headers['X-Campaign-ID'] || headers['x-campaign-id']
+          const leadId = headers['X-Lead-ID'] || headers['x-lead-id']
+
+          if (campaignId && leadId) {
+            console.log(`[InboxSync] Found via inbox_messages headers, linking to campaign ${campaignId}, lead ${leadId}`)
+            await updateCampaignLeadStatus(campaignId, leadId, 'replied')
+            return { linked: true, campaignId, leadId }
+          }
+        }
+      }
+    }
+
+    console.log(`[InboxSync] No matching campaign email found for message IDs: ${referencedIds.join(', ')}`)
+    return { linked: false }
+  } catch (error) {
+    console.error('[InboxSync] Error linking reply to campaign:', error)
+    return { linked: false }
+  }
+}
+
+/**
+ * Update campaign_leads status to stop the sequence
+ */
+async function updateCampaignLeadStatus(
+  campaignId: string,
+  leadId: string,
+  status: 'replied' | 'bounced' | 'unsubscribed'
+): Promise<void> {
+  const adminClient = createAdminClient()
+
+  console.log(`[InboxSync] Updating campaign_leads status: campaign=${campaignId}, lead=${leadId}, status=${status}`)
+
+  // Update campaign_leads status
+  const { error, count } = await adminClient
+    .from('campaign_leads')
+    .update({
+      status,
+      replied_at: status === 'replied' ? new Date().toISOString() : undefined,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('campaign_id', campaignId)
+    .eq('lead_id', leadId)
+
+  if (error) {
+    console.error(`[InboxSync] Failed to update campaign_leads status:`, error)
+    return
+  }
+
+  console.log(`[InboxSync] Updated campaign_leads (rows affected: ${count ?? 'unknown'})`)
+
+  // Also update lead status in leads table
+  const { error: leadError } = await adminClient
+    .from('leads')
+    .update({
+      status: status === 'replied' ? 'replied' : 'contacted',
+      last_contacted_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', leadId)
+
+  if (leadError) {
+    console.error(`[InboxSync] Failed to update lead status:`, leadError)
+  }
+
+  // Increment reply count on campaign stats
+  if (status === 'replied') {
+    const { error: rpcError } = await adminClient.rpc('increment_campaign_replies', { p_campaign_id: campaignId })
+    if (rpcError) {
+      console.error(`[InboxSync] Failed to increment campaign replies:`, rpcError)
+    } else {
+      console.log(`[InboxSync] Incremented campaign reply count for ${campaignId}`)
+    }
+  }
 }
 
 /**

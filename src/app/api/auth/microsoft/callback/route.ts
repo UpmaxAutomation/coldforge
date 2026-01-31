@@ -89,13 +89,22 @@ export async function GET(request: NextRequest) {
     const adminClient = createAdminClient()
 
     if (existingAccount) {
-      // Update existing account
-      await adminClient.from('email_accounts').update({
+      // Update existing account - SECURITY: Always verify organization_id ownership
+      const { error: updateError } = await adminClient.from('email_accounts').update({
         oauth_tokens_encrypted: encryptedCredentials,
         status: 'active' as const,
         health_score: 100,
         updated_at: new Date().toISOString(),
-      }).eq('id', existingAccount.id)
+      })
+        .eq('id', existingAccount.id)
+        .eq('organization_id', profile.organization_id) // CRITICAL: Prevent cross-org access
+
+      if (updateError) {
+        console.error('Failed to update email account:', updateError)
+        return NextResponse.redirect(
+          new URL('/accounts?error=update_failed', request.url)
+        )
+      }
     } else {
       // Create new account
       await adminClient.from('email_accounts').insert({

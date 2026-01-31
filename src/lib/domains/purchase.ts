@@ -1,8 +1,13 @@
+import { getCloudflareClient } from '../cloudflare/client'
+import { createAdminClient } from '../supabase/admin'
+
 export interface DomainPurchaseRequest {
   domain: string
   registrar: 'cloudflare' | 'namecheap' | 'porkbun'
   years: number
   orgId: string
+  autoRenew?: boolean
+  privacy?: boolean
 }
 
 export interface PurchaseResult {
@@ -10,6 +15,8 @@ export interface PurchaseResult {
   domain: string
   registrar: string
   expiresAt?: Date
+  domainId?: string
+  zoneId?: string
   error?: string
 }
 
@@ -20,6 +27,18 @@ export interface DomainAvailability {
   premium?: boolean
 }
 
+// TLD pricing fallback (Cloudflare API returns actual pricing, this is fallback)
+const TLD_PRICES: Record<string, number> = {
+  com: 10.11,
+  net: 10.11,
+  org: 9.93,
+  io: 33.98,
+  co: 11.99,
+  dev: 12.00,
+  app: 14.00,
+  ai: 89.00,
+}
+
 export async function checkDomainAvailability(domain: string): Promise<DomainAvailability> {
   // Validate domain format
   const domainRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z]{2,})+$/
@@ -27,28 +46,24 @@ export async function checkDomainAvailability(domain: string): Promise<DomainAva
     return { available: false }
   }
 
-  // Check domain availability via registrar API
-  // For now, return mock data - in production this would call Cloudflare API
-  // https://api.cloudflare.com/#registrar-domains-check-domain-availability
+  try {
+    const cloudflare = getCloudflareClient()
+    const result = await cloudflare.checkDomainAvailability(domain)
 
-  // Extract TLD for pricing
-  const tld = domain.split('.').pop()?.toLowerCase()
-  const prices: Record<string, number> = {
-    com: 10.11,
-    net: 10.11,
-    org: 9.93,
-    io: 33.98,
-    co: 11.99,
-    dev: 12.00,
-    app: 14.00,
-    ai: 89.00,
-  }
+    // Use API price if available, fallback to TLD price table
+    const tld = domain.split('.').pop()?.toLowerCase()
+    const fallbackPrice = TLD_PRICES[tld || 'com'] || 12.99
 
-  return {
-    available: true,
-    price: prices[tld || 'com'] || 12.99,
-    currency: 'USD',
-    premium: false
+    return {
+      available: result.available,
+      price: result.price || fallbackPrice,
+      currency: 'USD',
+      premium: result.premium,
+    }
+  } catch (error) {
+    console.error(`[Domain] Availability check failed for ${domain}:`, error)
+    // Return unavailable on error to be safe
+    return { available: false }
   }
 }
 
@@ -59,7 +74,7 @@ export async function purchaseDomain(request: DomainPurchaseRequest): Promise<Pu
       success: false,
       domain: request.domain,
       registrar: request.registrar,
-      error: 'Missing required fields: domain and orgId are required'
+      error: 'Missing required fields: domain and orgId are required',
     }
   }
 
@@ -68,7 +83,7 @@ export async function purchaseDomain(request: DomainPurchaseRequest): Promise<Pu
       success: false,
       domain: request.domain,
       registrar: request.registrar,
-      error: 'Years must be between 1 and 10'
+      error: 'Years must be between 1 and 10',
     }
   }
 
@@ -79,34 +94,132 @@ export async function purchaseDomain(request: DomainPurchaseRequest): Promise<Pu
       success: false,
       domain: request.domain,
       registrar: request.registrar,
-      error: 'Domain is not available for registration'
+      error: 'Domain is not available for registration',
     }
   }
 
-  // Purchase domain via registrar API
-  // In production, this would:
-  // 1. Call Cloudflare/Namecheap/Porkbun API to register domain
-  // 2. Configure nameservers
-  // 3. Store domain record in database
+  try {
+    const cloudflare = getCloudflareClient()
+    const supabase = createAdminClient()
 
-  // Mock successful purchase
-  const expiresAt = new Date()
-  expiresAt.setFullYear(expiresAt.getFullYear() + request.years)
+    console.log(`[Domain] Registering ${request.domain} via ${request.registrar}...`)
 
-  return {
-    success: true,
-    domain: request.domain,
-    registrar: request.registrar,
-    expiresAt
+    // Step 1: Register the domain via Cloudflare Registrar
+    const registrationResult = await cloudflare.registerDomain(request.domain, {
+      autoRenew: request.autoRenew ?? true,
+      privacy: request.privacy ?? true,
+      years: request.years,
+    })
+
+    if (!registrationResult.success) {
+      return {
+        success: false,
+        domain: request.domain,
+        registrar: request.registrar,
+        error: registrationResult.error || 'Registration failed',
+      }
+    }
+
+    console.log(`[Domain] ${request.domain} registered successfully`)
+
+    // Step 2: Get or create the DNS zone
+    let zone = await cloudflare.getZoneByDomain(request.domain)
+    if (!zone) {
+      console.log(`[Domain] Creating DNS zone for ${request.domain}...`)
+      zone = await cloudflare.createZone(request.domain)
+    }
+
+    // Calculate expiration date
+    const expiresAt = new Date()
+    expiresAt.setFullYear(expiresAt.getFullYear() + request.years)
+
+    // Step 3: Store domain record in database
+    const { data: domainRecord, error: dbError } = await supabase
+      .from('domains')
+      .insert({
+        organization_id: request.orgId,
+        domain: request.domain,
+        registrar: request.registrar,
+        cloudflare_zone_id: zone.id,
+        cloudflare_domain_id: registrationResult.domainId,
+        status: 'active',
+        expires_at: expiresAt.toISOString(),
+        auto_renew: request.autoRenew ?? true,
+        price_paid: availability.price,
+        years_purchased: request.years,
+        // DNS flags - will be set by orchestrator
+        spf_configured: false,
+        dkim_configured: false,
+        dmarc_configured: false,
+        health_status: 'pending',
+      })
+      .select()
+      .single()
+
+    if (dbError) {
+      console.error(`[Domain] Failed to store domain record:`, dbError)
+      // Domain is registered but DB failed - log warning but don't fail
+      console.warn(`[Domain] Domain ${request.domain} registered but DB insert failed`)
+    }
+
+    console.log(`[Domain] ${request.domain} purchase complete, zone ID: ${zone.id}`)
+
+    return {
+      success: true,
+      domain: request.domain,
+      registrar: request.registrar,
+      expiresAt,
+      domainId: domainRecord?.id || registrationResult.domainId,
+      zoneId: zone.id,
+    }
+  } catch (error) {
+    console.error(`[Domain] Purchase failed for ${request.domain}:`, error)
+    return {
+      success: false,
+      domain: request.domain,
+      registrar: request.registrar,
+      error: error instanceof Error ? error.message : 'Purchase failed',
+    }
   }
 }
 
 // Cloudflare-specific domain management functions
-export async function configureDomainDns(_domain: string, _records: DnsRecord[]): Promise<boolean> {
-  // Configure DNS records after domain purchase
-  // This would use Cloudflare DNS API
-  // TODO: Implement Cloudflare DNS API integration
-  return true
+export async function configureDomainDns(zoneId: string, records: DnsRecord[]): Promise<{
+  success: boolean
+  created: string[]
+  errors: string[]
+}> {
+  const cloudflare = getCloudflareClient()
+  const created: string[] = []
+  const errors: string[] = []
+
+  for (const record of records) {
+    try {
+      const result = await cloudflare.createDNSRecord(zoneId, {
+        type: record.type,
+        name: record.name,
+        content: record.content,
+        ttl: record.ttl || 3600,
+        priority: record.priority,
+        proxied: false,
+      })
+
+      if (result.success) {
+        created.push(`${record.type}:${record.name}`)
+        console.log(`[DNS] Created ${record.type} record for ${record.name}`)
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Unknown error'
+      errors.push(`${record.type}:${record.name} - ${msg}`)
+      console.error(`[DNS] Failed to create ${record.type} record for ${record.name}:`, error)
+    }
+  }
+
+  return {
+    success: errors.length === 0,
+    created,
+    errors,
+  }
 }
 
 export interface DnsRecord {
@@ -118,17 +231,44 @@ export interface DnsRecord {
 }
 
 export async function getDomainStatus(domain: string): Promise<DomainStatus> {
-  // Get current domain status from registrar
-  return {
-    domain,
-    status: 'active',
-    autoRenew: true,
-    locked: true,
-    expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
-    nameservers: [
-      'ns1.cloudflare.com',
-      'ns2.cloudflare.com'
-    ]
+  try {
+    const cloudflare = getCloudflareClient()
+    const domainInfo = await cloudflare.getDomain(domain)
+
+    if (!domainInfo) {
+      // Domain not found in registrar, check database
+      const supabase = createAdminClient()
+      const { data } = await supabase
+        .from('domains')
+        .select('*')
+        .eq('domain', domain)
+        .single()
+
+      if (data) {
+        return {
+          domain,
+          status: data.status as DomainStatus['status'],
+          autoRenew: data.auto_renew,
+          locked: true,
+          expiresAt: new Date(data.expires_at),
+          nameservers: ['ns1.cloudflare.com', 'ns2.cloudflare.com'],
+        }
+      }
+
+      throw new Error(`Domain ${domain} not found`)
+    }
+
+    return {
+      domain: domainInfo.name,
+      status: domainInfo.status as DomainStatus['status'],
+      autoRenew: domainInfo.autoRenew,
+      locked: domainInfo.locked,
+      expiresAt: new Date(domainInfo.expiresAt),
+      nameservers: ['ns1.cloudflare.com', 'ns2.cloudflare.com'],
+    }
+  } catch (error) {
+    console.error(`[Domain] Failed to get status for ${domain}:`, error)
+    throw error
   }
 }
 

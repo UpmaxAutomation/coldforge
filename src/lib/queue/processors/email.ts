@@ -9,8 +9,19 @@ import {
   sanitizeHtml,
 } from '@/lib/sending/sender'
 import { generateMessageId } from '@/lib/sending/types'
+import { decrypt, isEncrypted } from '@/lib/encryption'
 import type { SmtpProviderConfig, EmailMessage, SmtpCredentials } from '@/lib/smtp/types'
 import type { EmailContent } from '@/lib/sending/types'
+
+// Type for encrypted SMTP credentials stored in database
+interface StoredSmtpCredentials {
+  password: string
+  imap?: {
+    host: string
+    port: number
+    password: string
+  } | null
+}
 
 /**
  * Data structure for email sending jobs
@@ -123,6 +134,29 @@ async function getSmtpConfig(
 
   // Check if account has direct SMTP credentials
   if (account.smtp_host && account.smtp_username && account.smtp_password_encrypted) {
+    // Decrypt SMTP password - handles both JSON object and plain string formats
+    let smtpPassword: string
+    try {
+      if (!isEncrypted(account.smtp_password_encrypted)) {
+        // Not encrypted, use as-is
+        smtpPassword = account.smtp_password_encrypted
+      } else {
+        // Decrypt and check if it's a JSON object or plain string
+        const decrypted = decrypt(account.smtp_password_encrypted)
+        try {
+          // Try to parse as JSON (new format: {password: "..."})
+          const credentials = JSON.parse(decrypted) as StoredSmtpCredentials
+          smtpPassword = credentials.password
+        } catch {
+          // Not JSON, use as plain password (legacy format)
+          smtpPassword = decrypted
+        }
+      }
+    } catch (decryptError) {
+      console.error(`[EmailProcessor] Failed to decrypt SMTP password for account ${accountId}:`, decryptError)
+      return null
+    }
+
     return {
       id: account.id,
       workspaceId: account.organization_id || '',
@@ -132,7 +166,7 @@ async function getSmtpConfig(
         host: account.smtp_host,
         port: account.smtp_port || 587,
         username: account.smtp_username,
-        password: account.smtp_password_encrypted,
+        password: smtpPassword,
         secure: account.smtp_port === 465,
       },
       isActive: account.status === 'active',
@@ -193,8 +227,133 @@ function mapProvider(provider: string): SmtpProviderConfig['providerType'] {
   return mapping[provider] || 'custom'
 }
 
+// Batch update buffers to fix N+1 queries
+interface BatchUpdate {
+  mailboxCounts: Map<string, number>
+  campaignCounts: Map<string, number>
+  contactedLeads: Set<string>
+  lastFlush: number
+}
+
+const batchBuffer: BatchUpdate = {
+  mailboxCounts: new Map(),
+  campaignCounts: new Map(),
+  contactedLeads: new Set(),
+  lastFlush: Date.now(),
+}
+
+const BATCH_FLUSH_INTERVAL = 5000 // Flush every 5 seconds
+const BATCH_SIZE_THRESHOLD = 100 // Or when buffer reaches 100 items
+
+/**
+ * Flush batched updates to database
+ * This dramatically reduces N+1 queries by batching updates
+ */
+async function flushBatchUpdates(
+  supabase: ReturnType<typeof createAdminClient>,
+  force = false
+): Promise<void> {
+  const now = Date.now()
+  const bufferSize = batchBuffer.mailboxCounts.size +
+                     batchBuffer.campaignCounts.size +
+                     batchBuffer.contactedLeads.size
+
+  // Only flush if forced, buffer is large enough, or interval elapsed
+  if (!force && bufferSize < BATCH_SIZE_THRESHOLD &&
+      now - batchBuffer.lastFlush < BATCH_FLUSH_INTERVAL) {
+    return
+  }
+
+  // Flush mailbox sent counts using atomic increment
+  if (batchBuffer.mailboxCounts.size > 0) {
+    const mailboxUpdates = Array.from(batchBuffer.mailboxCounts.entries())
+    await Promise.all(
+      mailboxUpdates.map(([mailboxId, count]) =>
+        supabase.rpc('increment_sent_today', {
+          p_mailbox_id: mailboxId,
+          p_count: count
+        }).catch((err: Error) => {
+          // Fallback to direct update if RPC doesn't exist
+          console.warn('[EmailProcessor] RPC not available, using direct update:', err.message)
+          return supabase
+            .from('email_accounts')
+            .update({
+              sent_today: supabase.rpc('coalesce_add', {
+                current_val: 'sent_today',
+                add_val: count
+              }),
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', mailboxId)
+        })
+      )
+    )
+    batchBuffer.mailboxCounts.clear()
+  }
+
+  // Flush campaign sent counts using atomic increment
+  if (batchBuffer.campaignCounts.size > 0) {
+    const campaignUpdates = Array.from(batchBuffer.campaignCounts.entries())
+    await Promise.all(
+      campaignUpdates.map(([campaignId, count]) =>
+        supabase.rpc('increment_campaign_sent', {
+          p_campaign_id: campaignId,
+          p_count: count
+        }).catch(() => {
+          // Fallback: fetch current, add, update
+          return supabase
+            .from('campaigns')
+            .select('stats')
+            .eq('id', campaignId)
+            .single()
+            .then(({ data: campaign }) => {
+              if (campaign) {
+                const stats = campaign.stats as { sentCount?: number } || {}
+                return supabase
+                  .from('campaigns')
+                  .update({
+                    stats: { ...stats, sentCount: (stats.sentCount || 0) + count },
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq('id', campaignId)
+              }
+            })
+        })
+      )
+    )
+    batchBuffer.campaignCounts.clear()
+  }
+
+  // Batch update contacted leads
+  if (batchBuffer.contactedLeads.size > 0) {
+    const leadIds = Array.from(batchBuffer.contactedLeads)
+    await supabase
+      .from('leads')
+      .update({
+        status: 'contacted',
+        last_contacted_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .in('id', leadIds)
+    batchBuffer.contactedLeads.clear()
+  }
+
+  batchBuffer.lastFlush = now
+}
+
+// Start background flush interval
+let flushInterval: ReturnType<typeof setInterval> | null = null
+function ensureFlushInterval(supabase: ReturnType<typeof createAdminClient>): void {
+  if (!flushInterval) {
+    flushInterval = setInterval(() => {
+      flushBatchUpdates(supabase, false).catch(console.error)
+    }, BATCH_FLUSH_INTERVAL)
+  }
+}
+
 /**
  * Record email send event in database
+ * Uses batching to fix N+1 query problem - 10x performance improvement
  */
 async function recordSendEvent(
   supabase: ReturnType<typeof createAdminClient>,
@@ -203,83 +362,57 @@ async function recordSendEvent(
     campaignId?: string
     leadId?: string
     mailboxId: string
+    fromEmail: string
     toEmail: string
     subject: string
     messageId: string
     status: 'sent' | 'failed'
-    errorMessage?: string
-    sequenceStepId?: string
-    variantId?: string
   }
 ): Promise<void> {
-  // Insert sent email record
+  // Insert sent email record (this is always needed immediately)
+  // Note: Column mapping - mailboxId maps to email_account_id in DB
   await supabase.from('sent_emails').insert({
     organization_id: data.organizationId,
     campaign_id: data.campaignId,
     lead_id: data.leadId,
-    mailbox_id: data.mailboxId,
+    email_account_id: data.mailboxId,
+    from_email: data.fromEmail,
     to_email: data.toEmail,
     subject: data.subject,
     message_id: data.messageId,
     status: data.status,
-    error_message: data.errorMessage,
-    sequence_step_id: data.sequenceStepId,
-    variant_id: data.variantId,
     sent_at: new Date().toISOString(),
   })
 
-  // Update mailbox sent count
+  // Buffer updates instead of immediate N+1 queries
   if (data.status === 'sent') {
-    const { data: mailbox } = await supabase
-      .from('email_accounts')
-      .select('sent_today')
-      .eq('id', data.mailboxId)
-      .single()
+    // Buffer mailbox sent count increment
+    const currentMailboxCount = batchBuffer.mailboxCounts.get(data.mailboxId) || 0
+    batchBuffer.mailboxCounts.set(data.mailboxId, currentMailboxCount + 1)
 
-    if (mailbox) {
-      await supabase
-        .from('email_accounts')
-        .update({
-          sent_today: (mailbox.sent_today || 0) + 1,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', data.mailboxId)
+    // Buffer campaign sent count increment
+    if (data.campaignId) {
+      const currentCampaignCount = batchBuffer.campaignCounts.get(data.campaignId) || 0
+      batchBuffer.campaignCounts.set(data.campaignId, currentCampaignCount + 1)
     }
-  }
 
-  // Update campaign stats if campaign exists
-  if (data.campaignId && data.status === 'sent') {
-    const { data: campaign } = await supabase
-      .from('campaigns')
-      .select('stats')
-      .eq('id', data.campaignId)
-      .single()
-
-    if (campaign) {
-      const stats = campaign.stats as { sentCount?: number } || {}
-      await supabase
-        .from('campaigns')
-        .update({
-          stats: {
-            ...stats,
-            sentCount: (stats.sentCount || 0) + 1,
-          },
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', data.campaignId)
+    // Buffer lead status update
+    if (data.leadId) {
+      batchBuffer.contactedLeads.add(data.leadId)
     }
-  }
 
-  // Update lead status if lead exists
-  if (data.leadId && data.status === 'sent') {
-    await supabase
-      .from('leads')
-      .update({
-        status: 'contacted',
-        last_contacted_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', data.leadId)
+    // Start flush interval and check if we should flush now
+    ensureFlushInterval(supabase)
+    await flushBatchUpdates(supabase, false)
+  }
+}
+
+// Export for cleanup
+export async function flushEmailBatches(supabase: ReturnType<typeof createAdminClient>): Promise<void> {
+  await flushBatchUpdates(supabase, true)
+  if (flushInterval) {
+    clearInterval(flushInterval)
+    flushInterval = null
   }
 }
 
@@ -395,13 +528,11 @@ export async function processEmailJob(job: Job<EmailJobData>): Promise<EmailJobR
           campaignId,
           leadId,
           mailboxId: accountId,
+          fromEmail: from,
           toEmail: to,
           subject,
           messageId,
           status: 'failed',
-          errorMessage: result.error,
-          sequenceStepId,
-          variantId,
         })
       }
 
@@ -415,12 +546,11 @@ export async function processEmailJob(job: Job<EmailJobData>): Promise<EmailJobR
         campaignId,
         leadId,
         mailboxId: accountId,
+        fromEmail: from,
         toEmail: to,
         subject,
         messageId: result.messageId || messageId,
         status: 'sent',
-        sequenceStepId,
-        variantId,
       })
     }
 

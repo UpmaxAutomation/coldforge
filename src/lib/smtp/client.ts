@@ -13,6 +13,76 @@ import {
   ProviderHealth,
 } from './types';
 
+// Circuit breaker state
+interface CircuitBreakerState {
+  failures: number;
+  lastFailure: number;
+  state: 'closed' | 'open' | 'half-open';
+  lastStateChange: number;
+}
+
+const circuitBreakers = new Map<string, CircuitBreakerState>();
+const CIRCUIT_FAILURE_THRESHOLD = 5;
+const CIRCUIT_RESET_TIMEOUT = 60000; // 1 minute
+const CIRCUIT_HALF_OPEN_REQUESTS = 1;
+
+function getCircuitState(providerId: string): CircuitBreakerState {
+  if (!circuitBreakers.has(providerId)) {
+    circuitBreakers.set(providerId, {
+      failures: 0,
+      lastFailure: 0,
+      state: 'closed',
+      lastStateChange: Date.now(),
+    });
+  }
+  return circuitBreakers.get(providerId)!;
+}
+
+function recordSuccess(providerId: string): void {
+  const circuit = getCircuitState(providerId);
+  circuit.failures = 0;
+  circuit.state = 'closed';
+  circuit.lastStateChange = Date.now();
+}
+
+function recordFailure(providerId: string): void {
+  const circuit = getCircuitState(providerId);
+  circuit.failures++;
+  circuit.lastFailure = Date.now();
+
+  if (circuit.failures >= CIRCUIT_FAILURE_THRESHOLD) {
+    circuit.state = 'open';
+    circuit.lastStateChange = Date.now();
+    console.warn(`[SMTP Circuit Breaker] Circuit OPEN for provider ${providerId} after ${circuit.failures} failures`);
+  }
+}
+
+function canAttempt(providerId: string): boolean {
+  const circuit = getCircuitState(providerId);
+
+  if (circuit.state === 'closed') {
+    return true;
+  }
+
+  if (circuit.state === 'open') {
+    // Check if we should transition to half-open
+    if (Date.now() - circuit.lastStateChange >= CIRCUIT_RESET_TIMEOUT) {
+      circuit.state = 'half-open';
+      circuit.lastStateChange = Date.now();
+      console.log(`[SMTP Circuit Breaker] Circuit HALF-OPEN for provider ${providerId}`);
+      return true;
+    }
+    return false;
+  }
+
+  // half-open - allow limited requests
+  return true;
+}
+
+export function getCircuitBreakerStatus(providerId: string): CircuitBreakerState {
+  return getCircuitState(providerId);
+}
+
 // Provider-specific clients
 interface ProviderClient {
   send(message: EmailMessage): Promise<SendResult>;
@@ -32,6 +102,9 @@ class NodemailerClient implements ProviderClient {
       throw new Error('SMTP credentials required for nodemailer client');
     }
 
+    // TLS validation: Enable by default for security, allow override for testing
+    const rejectUnauthorized = process.env.SMTP_ALLOW_SELF_SIGNED !== 'true';
+
     this.transporter = nodemailer.createTransport({
       host: config.credentials.host,
       port: config.credentials.port,
@@ -41,11 +114,15 @@ class NodemailerClient implements ProviderClient {
         pass: config.credentials.password,
       },
       tls: {
-        rejectUnauthorized: false, // For self-signed certificates
+        rejectUnauthorized, // SECURITY: Validate TLS certificates by default
+        minVersion: 'TLSv1.2', // Enforce minimum TLS version
       },
       pool: true,
       maxConnections: 5,
       maxMessages: 100,
+      connectionTimeout: 30000, // 30 second timeout
+      greetingTimeout: 15000,
+      socketTimeout: 60000,
     });
   }
 
@@ -421,18 +498,30 @@ class SmtpConnectionPool {
 // Export singleton pool
 export const smtpPool = new SmtpConnectionPool();
 
-// High-level send function
+// High-level send function with circuit breaker
 export async function sendEmail(
   config: SmtpProviderConfig,
   message: EmailMessage
 ): Promise<SendResult> {
+  // Check circuit breaker before attempting
+  if (!canAttempt(config.id)) {
+    return {
+      success: false,
+      error: `Circuit breaker OPEN for provider ${config.id}. Retry after cooldown.`,
+      providerId: config.id,
+      timestamp: new Date(),
+    };
+  }
+
   smtpPool.setConfig(config.id, config);
 
   const client = await smtpPool.getConnection(config.id);
   if (!client) {
+    recordFailure(config.id);
     return {
       success: false,
       error: 'Failed to get SMTP connection',
+      providerId: config.id,
       timestamp: new Date(),
     };
   }
@@ -440,12 +529,21 @@ export async function sendEmail(
   try {
     const result = await client.send(message);
     smtpPool.releaseConnection(config.id, client);
+
+    if (result.success) {
+      recordSuccess(config.id);
+    } else {
+      recordFailure(config.id);
+    }
+
     return result;
   } catch (error) {
     smtpPool.releaseConnection(config.id, client);
+    recordFailure(config.id);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Send failed',
+      providerId: config.id,
       timestamp: new Date(),
     };
   }

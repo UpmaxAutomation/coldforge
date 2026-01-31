@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { verifyWebhookSignature } from '@/lib/billing';
+import { verifyWebhookSignature, parseDomainCheckoutSession } from '@/lib/billing';
 import { syncStripeInvoice } from '@/lib/billing/invoices';
 import { purchaseCredits } from '@/lib/billing/credits';
+import { setupDomain } from '@/lib/domains/orchestrator';
 import Stripe from 'stripe';
 
 // POST /api/webhooks/stripe - Handle Stripe webhooks
@@ -39,6 +40,41 @@ export async function POST(request: NextRequest) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
         const metadata = session.metadata || {};
+
+        // Handle domain purchases
+        if (metadata.type === 'domain_purchase') {
+          const domainPurchase = parseDomainCheckoutSession(session);
+          if (domainPurchase) {
+            console.log(`Processing domain purchase for org ${domainPurchase.organizationId}:`, domainPurchase.domains);
+
+            // Process each domain purchase
+            for (const domain of domainPurchase.domains) {
+              try {
+                const result = await setupDomain({
+                  domain,
+                  orgId: domainPurchase.organizationId,
+                  years: 1, // Default, would need to parse from line items for multi-year
+                  autoRenew: true,
+                });
+
+                if (result.success) {
+                  console.log(`Domain ${domain} setup completed successfully`);
+                } else {
+                  console.error(`Domain ${domain} setup failed:`, result.error);
+                }
+              } catch (err) {
+                console.error(`Error processing domain ${domain}:`, err);
+              }
+            }
+
+            await recordBillingEvent(supabase, domainPurchase.organizationId, 'domain_purchased', {
+              sessionId: session.id,
+              domains: domainPurchase.domains,
+              totalAmount: domainPurchase.totalAmountPaid,
+            });
+          }
+          break;
+        }
 
         // Handle credit purchases
         if (metadata.type === 'credits' && metadata.packageId && metadata.workspaceId) {

@@ -103,36 +103,35 @@ export function DomainSearch({ workspaceId, onPurchaseComplete }: DomainSearchPr
     setError(null)
 
     try {
-      const response = await fetch('/api/domains/purchase', {
+      // Create Stripe checkout session for domain purchase
+      const response = await fetch('/api/domains/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          workspaceId,
-          domains: Array.from(selectedDomains),
-          autoRenew: true,
-          privacy: true,
-          setupDNS: true,
+          domains: Array.from(selectedDomains).map(domain => ({
+            domain,
+            years: 1,
+          })),
         }),
       })
 
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || 'Purchase failed')
+        throw new Error(data.error || 'Failed to create checkout')
       }
 
-      // Remove purchased domains from results
-      setResults(prev => prev.filter(d => !selectedDomains.has(d.domain)))
-      setSelectedDomains(new Set())
-
-      if (onPurchaseComplete) {
-        onPurchaseComplete()
+      // Redirect to Stripe checkout
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl
+      } else {
+        throw new Error('No checkout URL returned')
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Purchase failed')
-    } finally {
+      setError(err instanceof Error ? err.message : 'Checkout failed')
       setIsPurchasing(false)
     }
+    // Note: Don't set isPurchasing to false on success since we're redirecting
   }
 
   const totalSelectedPrice = results
